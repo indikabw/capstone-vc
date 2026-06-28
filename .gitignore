@@ -1,0 +1,39 @@
+# OS files
+.DS_Store
+Thumbs.db
+
+# IDEs/Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# ROS 2 / Colcon build artifacts
+build/
+install/
+log/
+.colcon/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+htmlcov/
+venv/
+.venv/
+env/
+
+# ROS 2 / Gazebo bags & logs
+*.bag
+*.db3
+*.log
+
+# Antigravity / Gemini temporary files
+.gemini/
