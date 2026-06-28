@@ -53,11 +53,11 @@ Google ADK 2.0 LLM calls are inherently blocking.
 *   **Image Sampling**: A ROS2 subscriber continuously listens to `/camera/image_raw`. It stores the latest frame under a `threading.Lock()` (Mutex).
 *   **Execution**: When a reasoning goal is received, the node clones the latest image under the mutex lock and offloads the blocking ADK LLM call to a background thread. This ensures the ROS2 node continues to process TF, `/odom`, and `/camera/image_raw` callbacks.
 
-### 4.3 Semantic Exploration & Memory
-The agent maintains a localized semantic memory (state dictionary) to map abstract concepts to physical coordinates.
-*   **Exploration**: If commanded to "Find the kitchen", and the kitchen is not in its memory, the agent orchestrates a search pattern (dispatching Nav2 goals) while analyzing the camera feed.
-*   **Identification**: Once the ADK Vision model recognizes visual cues of a kitchen (stove, fridge, sink), it queries its current AMCL pose.
-*   **Memory Update**: The node saves the `{ "kitchen": [x, y, theta] }` mapping into its internal dictionary for future use, allowing subsequent commands to bypass the exploration phase.
+### 4.3 Semantic Exploration & Spatial Mapping
+The agent builds and maintains a spatial semantic memory, mapping abstract concepts to 2D polygon boundaries on the static map.
+*   **Exploration**: If commanded to "Find the kitchen", and the kitchen is not in its memory, the agent orchestrates a search pattern (dispatching Nav2 goals) to explore the environment.
+*   **Spatial Reasoning**: Once the ADK Vision model recognizes visual cues of a kitchen (stove, fridge, sink), the agent pivots to scan the surrounding area. By combining depth/visual estimates with the 2D occupancy grid map and its AMCL pose, the reasoning node deduces the physical boundaries of the room.
+*   **Memory Update**: The node saves the `{ "kitchen": Polygon(point1, point2, ...) }` mapping into its internal spatial dictionary. Future queries for the kitchen can sample target poses within this bounded polygon.
 
 ### 4.4 Action Dispatching
 The reasoning node acts as a client to the lower-level subsystems:
