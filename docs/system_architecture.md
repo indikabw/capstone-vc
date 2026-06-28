@@ -63,3 +63,11 @@ The agent builds and maintains a spatial semantic memory, mapping abstract conce
 The reasoning node acts as a client to the lower-level subsystems:
 1.  **Navigation**: Formulates a `NavigateToPose` action goal and sends it to the Nav2 Action Server.
 2.  **Manipulation**: Computes Cartesian target coordinates and sends them to the MoveIt2 Action Server to control the OpenManipulator-X.
+
+### 4.5 Chain-of-Thought (CoT) Agent Loop
+To handle complex instructions (e.g., "bring the red mug on the coffee table to the kitchen"), the ADK 2.0 node executes a continuous Chain-of-Thought reasoning loop rather than a single pass.
+*   **Context Management**: To prevent the LLM context window from overflowing during long tasks, the agent relies on state summarization. The context strictly maintains the **current environmental state** and the **plan for remaining subtasks**. Detailed logs of already completed subtasks are discarded.
+*   **Task Decomposition & Intent Inference**: The agent breaks the high-level goal into sequential subtasks. It infers implicit requirements, such as reasoning that "bring" implies finding a stable flat surface (like a countertop) within the "kitchen" polygon to place the object.
+*   **Execution & Visual Verification**: The agent executes the current subtask (dispatching Nav2/MoveIt2 goals). Upon subtask completion, it samples the camera to visually verify success (e.g., verifying the mug is securely in the gripper). 
+*   **Error Handling**: In this initial architecture, if a subtask fails (e.g., a MoveIt2 planning failure or dropping an object), the agent will immediately abort the CoT loop and return a failure state to the user. Future iterations may introduce visual recovery loops.
+*   **Completion Criteria**: The task is only marked as "Done" when the agent's visual/spatial state evaluation matches the criteria of the final subtask in its plan (e.g., visually confirming the mug is resting on the kitchen counter).

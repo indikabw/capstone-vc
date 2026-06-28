@@ -29,3 +29,19 @@ Feature: Household Agentic Reasoning and Navigation
     And when the Nav2 goal succeeds
     Then the agent should dispatch a MoveIt2 Cartesian goal to place the "book"
     And the action server should return success with summary "Book successfully moved to bookshelf."
+
+  Scenario: Chain-of-Thought Task Decomposition and Verification
+    Given the agent's semantic dictionary contains "coffee_table" and "kitchen" spatial polygons
+    When the user commands "Bring the red mug on the coffee table to the kitchen"
+    Then the agent should decompose the task into a plan with sequential subtasks
+    And the agent should infer that "bring to kitchen" requires finding a stable flat surface within the "kitchen" polygon
+    And the agent executes the subtask to navigate to the "coffee_table"
+    And when the navigation succeeds, the agent samples the camera to visually verify its location
+    And the agent executes the subtask to pick up the "red mug"
+    And when the grasp completes, the agent samples the camera to verify the mug is in the gripper
+    And the agent updates its internal context, summarizing completed actions and retaining the plan for remaining subtasks
+    And the agent executes the subtask to navigate to the "kitchen"
+    And when navigation succeeds, the agent scans for a countertop and executes the placement subtask
+    And the agent samples the camera to verify the mug is resting on the countertop
+    Then the agent evaluates the visual state against the original goal and marks the task as "Done"
+    And the action server should return success with summary "Red mug placed on kitchen counter."
