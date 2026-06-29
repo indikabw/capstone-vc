@@ -15,7 +15,7 @@ def generate_launch_description():
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(pkg_custom_bot_nav, 'maps', 'small_house.yaml'),
+        default_value=os.path.join(pkg_custom_bot_nav, 'maps', 'single_room.yaml'),
         description='Full path to map yaml file to load')
 
     declare_params_file_cmd = DeclareLaunchArgument(

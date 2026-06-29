@@ -2,8 +2,9 @@ import os
 import xacro
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 
 def generate_launch_description():
@@ -11,8 +12,14 @@ def generate_launch_description():
     pkg_custom_bot_description = get_package_share_directory('custom_bot_description')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
 
-    # Path to the world file inside the package
-    world_path = os.path.join(pkg_custom_bot_gazebo, 'worlds', 'small_house.world')
+    world_arg = DeclareLaunchArgument(
+        'world',
+        default_value='single_room.world',
+        description='World file to load'
+    )
+
+    world = LaunchConfiguration('world')
+    world_path = PathJoinSubstitution([pkg_custom_bot_gazebo, 'worlds', world])
 
     # Configure GZ_SIM_RESOURCE_PATH dynamically so Gazebo can find local meshes/models
     models_path = os.path.join(pkg_custom_bot_gazebo, 'models')
@@ -37,7 +44,7 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': f'-r -v 4 {world_path}'}.items()
+        launch_arguments={'gz_args': ['-r -v 4 ', world_path]}.items()
     )
 
     # 2. Parse XACRO and run Robot State Publisher
@@ -92,6 +99,7 @@ def generate_launch_description():
     )
 
     return LaunchDescription([
+        world_arg,
         gz_sim,
         robot_state_publisher,
         spawn_robot,
