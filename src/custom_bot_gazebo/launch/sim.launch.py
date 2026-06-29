@@ -106,8 +106,11 @@ def generate_launch_description():
             '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
             '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
             '/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
-            '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+            '/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
             '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model'
+        ],
+        remappings=[
+            ('/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan', '/scan')
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'
@@ -117,7 +120,10 @@ def generate_launch_description():
     image_bridge = Node(
         package='ros_gz_image',
         executable='image_bridge',
-        arguments=['/camera/image_raw'],
+        arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image'],
+        remappings=[
+            ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/camera/image_raw')
+        ],
         parameters=[{'use_sim_time': True}],
         output='screen'
     )

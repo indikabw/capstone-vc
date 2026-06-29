@@ -5,7 +5,7 @@
   -->
 
   <!-- 1. Include TurtleBot4 (Standard) -->
-  <xacro:include filename="$(find turtlebot4_description)/urdf/standard/turtlebot4.urdf.xacro" />
+  <xacro:include filename="$(find custom_bot_description)/urdf/turtlebot4.urdf.xacro" />
   
   <!-- 2. Include OpenManipulator-X -->
   <xacro:include filename="$(find open_manipulator_description)/urdf/open_manipulator_x/open_manipulator_x_arm.urdf.xacro" />
