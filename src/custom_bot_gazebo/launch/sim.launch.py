@@ -15,7 +15,7 @@ def generate_launch_description():
 
     world_arg = DeclareLaunchArgument(
         'world',
-        default_value='single_room.world',
+        default_value='small_house.world',
         description='World file to load'
     )
 
