@@ -59,7 +59,7 @@ def generate_launch_description():
 
     # 2. Parse XACRO and run Robot State Publisher
     xacro_file = os.path.join(pkg_custom_bot_description, 'urdf', 'robot.urdf.xacro')
-    robot_description_raw = xacro.process_file(xacro_file).toxml()
+    robot_description_raw = xacro.process_file(xacro_file, mappings={'gazebo': 'ignition'}).toxml()
 
     robot_state_publisher = Node(
         package='robot_state_publisher',
