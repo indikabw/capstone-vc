@@ -1,5 +1,6 @@
 import os
 import xacro
+import launch
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
@@ -39,17 +40,37 @@ def generate_launch_description():
         if prefix:
             os.environ['GZ_SIM_RESOURCE_PATH'] += ':' + os.path.join(prefix, 'share')
 
-    # 1. Start Gazebo Sim (Jetty)
-    gz_sim = IncludeLaunchDescription(
+    headless_arg = DeclareLaunchArgument(
+        'headless',
+        default_value='true',
+        description='Whether to run the Gazebo GUI client'
+    )
+
+    headless = LaunchConfiguration('headless')
+
+    # 1. Start Gazebo Sim (Jetty) Server explicitly
+    gz_sim_server = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
-        launch_arguments={'gz_args': ['-r -v 4 ', world_path]}.items()
+        launch_arguments={'gz_args': [
+            '-r -s -v 4 ',
+            world_path
+        ]}.items()
+    )
+
+    # Start Gazebo Sim GUI (Client) explicitly if headless is false
+    gz_sim_gui = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
+        ),
+        launch_arguments={'gz_args': ['-g -v 4 ']}.items(),
+        condition=launch.conditions.UnlessCondition(headless)
     )
 
     # 2. Parse XACRO and run Robot State Publisher
     xacro_file = os.path.join(pkg_custom_bot_description, 'urdf', 'robot.urdf.xacro')
-    robot_description_raw = xacro.process_file(xacro_file).toxml()
+    robot_description_raw = xacro.process_file(xacro_file, mappings={'gazebo': 'ignition'}).toxml()
 
     robot_state_publisher = Node(
         package='robot_state_publisher',
@@ -72,6 +93,7 @@ def generate_launch_description():
             '-y', '0.0',
             '-z', '0.2'
         ],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
@@ -87,6 +109,7 @@ def generate_launch_description():
             '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
             '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model'
         ],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
@@ -95,12 +118,15 @@ def generate_launch_description():
         package='ros_gz_image',
         executable='image_bridge',
         arguments=['/camera/image_raw'],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
     return LaunchDescription([
         world_arg,
-        gz_sim,
+        headless_arg,
+        gz_sim_server,
+        gz_sim_gui,
         robot_state_publisher,
         spawn_robot,
         bridge,
