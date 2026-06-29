@@ -8,8 +8,8 @@
 #include "angles/angles.h"
 #include "irobot_create_nodes/motion_control/drive_goal_behaviors.hpp"
 #include "geometry_msgs/msg/pose_stamped.hpp"
-#include "tf2/LinearMath/Quaternion.h"
-#include "tf2/utils.h"
+#include "tf2/LinearMath/Quaternion.hpp"
+#include "tf2/utils.hpp"
 
 namespace irobot_create_nodes
 {

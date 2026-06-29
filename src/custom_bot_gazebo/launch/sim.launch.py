@@ -1,10 +1,11 @@
 import os
 import xacro
+import launch
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration, PathJoinSubstitution, PythonExpression
+from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 
 def generate_launch_description():
@@ -18,14 +19,7 @@ def generate_launch_description():
         description='World file to load'
     )
 
-    headless_arg = DeclareLaunchArgument(
-        'headless',
-        default_value='true',
-        description='Run Gazebo in headless mode (server only)'
-    )
-
     world = LaunchConfiguration('world')
-    headless = LaunchConfiguration('headless')
     world_path = PathJoinSubstitution([pkg_custom_bot_gazebo, 'worlds', world])
 
     # Configure GZ_SIM_RESOURCE_PATH dynamically so Gazebo can find local meshes/models
@@ -46,15 +40,32 @@ def generate_launch_description():
         if prefix:
             os.environ['GZ_SIM_RESOURCE_PATH'] += ':' + os.path.join(prefix, 'share')
 
-    # 1. Start Gazebo Sim (Jetty)
-    gz_sim = IncludeLaunchDescription(
+    headless_arg = DeclareLaunchArgument(
+        'headless',
+        default_value='true',
+        description='Whether to run the Gazebo GUI client'
+    )
+
+    headless = LaunchConfiguration('headless')
+
+    # 1. Start Gazebo Sim (Jetty) Server explicitly
+    gz_sim_server = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
             os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
         ),
         launch_arguments={'gz_args': [
-            PythonExpression(["'-r -s -v 4 ' if '", headless, "' == 'true' else '-r -v 4 '"]),
+            '-r -s -v 4 ',
             world_path
         ]}.items()
+    )
+
+    # Start Gazebo Sim GUI (Client) explicitly if headless is false
+    gz_sim_gui = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_ros_gz_sim, 'launch', 'gz_sim.launch.py')
+        ),
+        launch_arguments={'gz_args': ['-g -v 4 ']}.items(),
+        condition=launch.conditions.UnlessCondition(headless)
     )
 
     # 2. Parse XACRO and run Robot State Publisher
@@ -82,6 +93,7 @@ def generate_launch_description():
             '-y', '0.0',
             '-z', '0.2'
         ],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
@@ -97,6 +109,7 @@ def generate_launch_description():
             '/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
             '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model'
         ],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
@@ -105,13 +118,15 @@ def generate_launch_description():
         package='ros_gz_image',
         executable='image_bridge',
         arguments=['/camera/image_raw'],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
     return LaunchDescription([
         world_arg,
         headless_arg,
-        gz_sim,
+        gz_sim_server,
+        gz_sim_gui,
         robot_state_publisher,
         spawn_robot,
         bridge,
