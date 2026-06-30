@@ -13,7 +13,7 @@ BAG_PID=$!
 sleep 2
 
 echo "Starting navigation scenario (verify_nav.py)..."
-ros2 run custom_bot_navigation verify_nav.py
+PYTHONUNBUFFERED=1 ros2 run custom_bot_navigation verify_nav.py
 
 echo "Navigation script finished. Stopping rosbag recording..."
 pkill -INT -f "rosbag2"
