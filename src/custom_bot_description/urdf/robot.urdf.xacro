@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<robot name="custom_bot" xmlns:xacro="http://ros.org/wiki/xacro">
+  <!-- 
+    Unified URDF combining TurtleBot4 and OpenManipulator-X
+  -->
+
+  <!-- 1. Include TurtleBot4 (Standard) -->
+  <xacro:include filename="$(find custom_bot_description)/urdf/turtlebot4.urdf.xacro" />
+  
+  <!-- 2. Include OpenManipulator-X -->
+  <xacro:include filename="$(find open_manipulator_description)/urdf/open_manipulator_x/open_manipulator_x_arm.urdf.xacro" />
+
+  <!-- 3. Instantiate the OpenManipulator-X -->
+  <xacro:open_manipulator_x prefix="omx_" />
+
+  <!-- 4. Attach the arm to the TurtleBot4 -->
+  <!-- We attach the base of the arm (omx_link1) to the TurtleBot4's top sensor plate -->
+  <joint name="arm_mount_joint" type="fixed">
+    <parent link="tower_sensor_plate"/> 
+    <child link="omx_link1"/>
+    <origin xyz="0 0 0" rpy="0 0 0"/>
+  </joint>
+
+  <!-- Gazebo plugins for OpenManipulator-X might need to be explicitly included if we want ROS2 control -->
+  <xacro:include filename="$(find open_manipulator_description)/gazebo/open_manipulator_x.gazebo.xacro" />
+  <xacro:open_manipulator_x_gazebo prefix="omx_" />
+
+</robot>
