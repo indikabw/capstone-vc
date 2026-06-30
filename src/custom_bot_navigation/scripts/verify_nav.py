@@ -27,12 +27,12 @@ def main():
     print("Waiting for Nav2 to become active...")
     navigator.waitUntilNav2Active()
 
-    print("Sending goal to x=1.0, y=1.0 (should require navigating around obstacles)...")
+    print("Sending goal to x=4.0, y=4.0 (should require navigating around obstacles)...")
     goal_pose = PoseStamped()
     goal_pose.header.frame_id = 'map'
     goal_pose.header.stamp = navigator.get_clock().now().to_msg()
-    goal_pose.pose.position.x = 1.0
-    goal_pose.pose.position.y = 1.0
+    goal_pose.pose.position.x = 4.0
+    goal_pose.pose.position.y = 4.0
     goal_pose.pose.orientation.w = 1.0
 
     navigator.goToPose(goal_pose)
