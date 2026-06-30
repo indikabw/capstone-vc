@@ -131,13 +131,42 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 5b. (Optional) Robot RGBD camera bridge — enabled to record TurtleBot camera feed.
+    # 5b. Robot RGBD camera bridge — enabled to record TurtleBot camera feed.
+    # Extract the world name from the SDF file so the Gazebo transport topic
+    # matches regardless of which world file is loaded.
+    import xml.etree.ElementTree as ET
+    default_world_path = os.path.join(pkg_custom_bot_gazebo, 'worlds',
+                                       'simple_home.world')
+    try:
+        _tree = ET.parse(default_world_path)
+        _world_el = _tree.find('.//world')
+        _world_name = _world_el.get('name', 'simple_home') if _world_el is not None else 'simple_home'
+    except Exception:
+        _world_name = 'simple_home'
+
+    _gz_cam_topic = (f'/world/{_world_name}/model/custom_bot'
+                     f'/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image')
     robot_camera_bridge = Node(
         package='ros_gz_image',
         executable='image_bridge',
-        arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image'],
+        arguments=[_gz_cam_topic],
         remappings=[
-            ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/camera/image_raw')
+            (_gz_cam_topic, '/camera/image_raw')
+        ],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
+
+    _gz_scan_topic = (f'/world/{_world_name}/model/custom_bot'
+                      f'/link/rplidar_link/sensor/rplidar/scan')
+    scan_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=[
+            f'{_gz_scan_topic}@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan'
+        ],
+        remappings=[
+            (_gz_scan_topic, '/scan')
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'
@@ -179,6 +208,7 @@ def generate_launch_description():
         bridge,
         destination_camera_bridge,
         robot_camera_bridge,
+        scan_bridge,
         twist_converter_node,
         dynamic_rplidar_tf_node,
         tf_static_republisher_node

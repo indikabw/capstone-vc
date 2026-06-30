@@ -34,7 +34,7 @@
 
   <xacro:property name="camera_mount_x_offset"         value="${-11.8*cm2m}"/>
   <xacro:property name="camera_mount_y_offset"         value="${0*cm2m}"/>
-  <xacro:property name="camera_mount_z_offset"         value="${5.257*cm2m}"/>
+  <xacro:property name="camera_mount_z_offset"         value="${45.257*cm2m}"/>
 
   <xacro:property name="oakd_pro_x_offset"             value="${5.84*cm2m}"/>
   <xacro:property name="oakd_pro_y_offset"             value="${0*cm2m}"/>
