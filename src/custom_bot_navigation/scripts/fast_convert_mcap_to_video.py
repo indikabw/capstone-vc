@@ -7,11 +7,12 @@ from rosidl_runtime_py.utilities import get_message
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: convert_on_vm.py <bag_dir> <output.mp4>")
+        print("Usage: convert_on_vm.py <bag_dir> <output.mp4> [topic_name]")
         sys.exit(1)
 
     bag_dir = sys.argv[1]
     output_mp4 = sys.argv[2]
+    image_topic = sys.argv[3] if len(sys.argv) > 3 else '/destination_camera/image_raw'
     
     storage_options = rosbag2_py.StorageOptions(
         uri=bag_dir,
@@ -28,14 +29,14 @@ def main():
     topic_types = reader.get_all_topics_and_types()
     type_map = {topic.name: topic.type for topic in topic_types}
     
-    if '/destination_camera/image_raw' not in type_map:
-        print("Topic /destination_camera/image_raw not found in bag")
+    if image_topic not in type_map:
+        print(f"Topic {image_topic} not found in bag")
         sys.exit(1)
         
-    msg_type_str = type_map['/destination_camera/image_raw']
+    msg_type_str = type_map[image_topic]
     msg_type = get_message(msg_type_str)
 
-    storage_filter = rosbag2_py.StorageFilter(topics=['/destination_camera/image_raw'])
+    storage_filter = rosbag2_py.StorageFilter(topics=[image_topic])
     reader.set_filter(storage_filter)
 
     bridge = CvBridge()

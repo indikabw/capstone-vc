@@ -11,7 +11,7 @@
           <ixx>14.601</ixx>
           <ixy>0</ixy>
           <ixz>0</ixz>
-          <iyy>0</iyy>
+          <iyy>0.1</iyy>
           <iyz>0</iyz>
           <izz>14.601</izz>
         </inertia>

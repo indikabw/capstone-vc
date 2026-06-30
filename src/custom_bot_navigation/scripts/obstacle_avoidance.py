@@ -8,7 +8,7 @@ import time
 class ObstacleAvoidance(Node):
     def __init__(self):
         super().__init__('obstacle_avoidance')
-        self.publisher = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.publisher = self.create_publisher(Twist, '/cmd_vel_unstamped', 10)
         self.subscription = self.create_subscription(LaserScan, '/scan', self.scan_callback, 10)
         self.timer = self.create_timer(0.1, self.timer_callback)
         self.cmd = Twist()
