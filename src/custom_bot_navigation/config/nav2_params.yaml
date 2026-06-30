@@ -249,10 +249,10 @@ local_costmap:
       resolution: 0.05
       robot_radius: 0.25
       plugins: ["voxel_layer", "inflation_layer"]
-      filters: ["keepout_filter"]
+      filters: []
       keepout_filter:
         plugin: "nav2_costmap_2d::KeepoutFilter"
-        enabled: KEEPOUT_ZONE_ENABLED
+        enabled: false
         filter_info_topic: "keepout_costmap_filter_info"
         override_lethal_cost: true
         lethal_override_cost: 200
@@ -303,16 +303,16 @@ global_costmap:
       resolution: 0.05
       track_unknown_space: true
       plugins: ["static_layer", "obstacle_layer", "inflation_layer"]
-      filters: ["keepout_filter", "speed_filter"]
+      filters: []
       keepout_filter:
         plugin: "nav2_costmap_2d::KeepoutFilter"
-        enabled: KEEPOUT_ZONE_ENABLED
+        enabled: false
         filter_info_topic: "keepout_costmap_filter_info"
         override_lethal_cost: true
         lethal_override_cost: 200
       speed_filter:
         plugin: "nav2_costmap_2d::SpeedFilter"
-        enabled: SPEED_ZONE_ENABLED
+        enabled: false
         filter_info_topic: "speed_costmap_filter_info"
         speed_limit_topic: "speed_limit"
       obstacle_layer:
@@ -516,7 +516,7 @@ collision_monitor:
     stop_pub_timeout: 2.0
     # Polygons represent zone around the robot for "stop", "slowdown" and "limit" action types,
     # and robot footprint for "approach" action type.
-    polygons: ["FootprintApproach"]
+    polygons: []
     FootprintApproach:
       type: "polygon"
       action_type: "approach"
@@ -525,7 +525,7 @@ collision_monitor:
       simulation_time_step: 0.1
       min_points: 6
       visualize: false
-      enabled: true
+      enabled: false
     observation_sources: ["scan"]
     scan:
       type: "scan"

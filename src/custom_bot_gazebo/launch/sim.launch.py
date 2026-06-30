@@ -107,6 +107,7 @@ def generate_launch_description():
             '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
             '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
             '/model/custom_bot/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
+            '/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
             '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model'
         ],
         remappings=[
@@ -135,22 +136,25 @@ def generate_launch_description():
         package='custom_bot_navigation',
         executable='twist_stamped_to_twist.py',
         name='twist_stamped_to_twist',
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
     # 7. Dynamic RPLidar TF Bridge (bypasses static cache loss)
     dynamic_rplidar_tf_node = Node(
         package='custom_bot_gazebo',
-        executable='dynamic_rplidar_tf_bridge',
+        executable='dynamic_rplidar_tf_bridge.py',
         name='dynamic_rplidar_tf_bridge',
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
     # 8. TF Static Republisher (republishes all static TFs as dynamic)
     tf_static_republisher_node = Node(
         package='custom_bot_gazebo',
-        executable='tf_static_republisher',
+        executable='tf_static_republisher.py',
         name='tf_static_republisher',
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 

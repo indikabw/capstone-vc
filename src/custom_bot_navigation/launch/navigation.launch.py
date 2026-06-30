@@ -56,16 +56,11 @@ def generate_launch_description():
         output='screen'
     )
 
-    delayed_scan_bridge = TimerAction(
-        period=15.0,
-        actions=[scan_bridge]
-    )
-
     ld = LaunchDescription()
     ld.add_action(declare_map_yaml_cmd)
     ld.add_action(declare_params_file_cmd)
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(nav2_bringup_cmd)
-    ld.add_action(delayed_scan_bridge)
+    ld.add_action(scan_bridge)
 
     return ld

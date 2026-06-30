@@ -13,6 +13,8 @@ def main():
     
     navigator = BasicNavigator()
 
+    print("Waiting for TF buffer to fill...")
+    time.sleep(3.0)
     print("Setting initial pose...")
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = 'map'
