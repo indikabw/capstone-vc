@@ -42,3 +42,9 @@ All ROS 2 commands must be wrapped in an SSH call targeting the VM. Because the 
 If you are launching a node that requires a graphical user interface (e.g., Gazebo via `sim.launch.py`, or RViz via Navigation 2):
 1. Ensure `export DISPLAY=:0` is included in your SSH payload (as shown in the template above). This ensures the window appears on the VM's primary monitor.
 2. If launching a blocking, long-running process (like a `ros2 launch` file), launch it in the background using `nohup ... > /dev/null 2>&1 &` so that your SSH connection doesn't hang indefinitely waiting for the node to exit.
+
+## 6. Awaiting Asynchronous Tasks & Liveness Timers (CRITICAL)
+When triggering builds, tests, or launches that run in the background (asynchronous tasks in the Antigravity chat):
+1. **Set Sync Timeout**: If a command is expected to complete within 10 seconds, set `WaitMsBeforeAsync` to a value up to `10000` to run it synchronously and check its output immediately.
+2. **Yield Prompt Control**: For longer commands, do NOT say "I will wait 35s and report back" without ending your turn. Output your summary, and stop calling tools (yield control). The system will automatically wake you up when the command outputs or completes.
+3. **Use Liveness/Cleanup Timers**: If there's a risk the command might hang (e.g. Gazebo launches, BDD test suites), always schedule a one-shot liveness timer using the `schedule` tool. Set the `TimerCondition` to the target task ID so that you are awakened if it fails to finish or report back in a timely manner.
