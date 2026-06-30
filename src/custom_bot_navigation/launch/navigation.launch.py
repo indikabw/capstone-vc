@@ -4,6 +4,8 @@ from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
+from launch_ros.actions import Node
+from launch.actions import TimerAction
 
 def generate_launch_description():
     pkg_custom_bot_nav = get_package_share_directory('custom_bot_navigation')
@@ -15,7 +17,8 @@ def generate_launch_description():
 
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
-        default_value=os.path.join(pkg_custom_bot_nav, 'maps', 'small_house.yaml'),
+        default_value=os.path.join(
+            pkg_custom_bot_nav, 'maps', 'single_room.yaml'),
         description='Full path to map yaml file to load')
 
     declare_params_file_cmd = DeclareLaunchArgument(
@@ -39,10 +42,30 @@ def generate_launch_description():
             'params_file': params_file}.items()
     )
 
+    # Bridge scan topic separately with a delay to prevent AMCL crashing on empty static cache
+    scan_bridge = Node(
+        package='ros_gz_bridge',
+        executable='parameter_bridge',
+        arguments=[
+            '/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan'
+        ],
+        remappings=[
+            ('/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan', '/scan')
+        ],
+        parameters=[{'use_sim_time': use_sim_time}],
+        output='screen'
+    )
+
+    delayed_scan_bridge = TimerAction(
+        period=15.0,
+        actions=[scan_bridge]
+    )
+
     ld = LaunchDescription()
     ld.add_action(declare_map_yaml_cmd)
     ld.add_action(declare_params_file_cmd)
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(nav2_bringup_cmd)
+    ld.add_action(delayed_scan_bridge)
 
     return ld

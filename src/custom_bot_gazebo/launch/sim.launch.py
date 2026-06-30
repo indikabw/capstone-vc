@@ -7,6 +7,7 @@ from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch.actions import TimerAction
 
 def generate_launch_description():
     pkg_custom_bot_gazebo = get_package_share_directory('custom_bot_gazebo')
@@ -15,7 +16,7 @@ def generate_launch_description():
 
     world_arg = DeclareLaunchArgument(
         'world',
-        default_value='small_house.world',
+        default_value='single_room.world',
         description='World file to load'
     )
 
@@ -97,7 +98,7 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 4. Bridge ROS topics to Gazebo
+    # 4. Bridge ROS topics to Gazebo (except scan)
     bridge = Node(
         package='ros_gz_bridge',
         executable='parameter_bridge',
@@ -105,16 +106,18 @@ def generate_launch_description():
             '/clock@rosgraph_msgs/msg/Clock[gz.msgs.Clock',
             '/cmd_vel@geometry_msgs/msg/Twist@gz.msgs.Twist',
             '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
-            '/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
-            '/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan',
+            '/model/custom_bot/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
             '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model'
         ],
         remappings=[
-            ('/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan', '/scan')
+            ('/cmd_vel', '/cmd_vel_unstamped'),
+            ('/model/custom_bot/tf', '/tf')
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'
     )
+
+
 
     # 5. High-performance image bridge
     image_bridge = Node(
@@ -128,6 +131,29 @@ def generate_launch_description():
         output='screen'
     )
 
+    twist_converter_node = Node(
+        package='custom_bot_navigation',
+        executable='twist_stamped_to_twist.py',
+        name='twist_stamped_to_twist',
+        output='screen'
+    )
+
+    # 7. Dynamic RPLidar TF Bridge (bypasses static cache loss)
+    dynamic_rplidar_tf_node = Node(
+        package='custom_bot_gazebo',
+        executable='dynamic_rplidar_tf_bridge',
+        name='dynamic_rplidar_tf_bridge',
+        output='screen'
+    )
+
+    # 8. TF Static Republisher (republishes all static TFs as dynamic)
+    tf_static_republisher_node = Node(
+        package='custom_bot_gazebo',
+        executable='tf_static_republisher',
+        name='tf_static_republisher',
+        output='screen'
+    )
+
     return LaunchDescription([
         world_arg,
         headless_arg,
@@ -136,5 +162,8 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_robot,
         bridge,
-        image_bridge
+        image_bridge,
+        twist_converter_node,
+        dynamic_rplidar_tf_node,
+        tf_static_republisher_node
     ])
