@@ -187,5 +187,31 @@
         </visual>
       </link>
     </model>
+
+    <!-- Ideal Location Overhead Wide-Angle Camera -->
+    <model name="destination_camera">
+      <static>true</static>
+      <!-- Position: x=4.5m, y=4.5m, z=4.0m, pitched down 0.56 rad, yawed -2.356 rad to point back at (0, 0, 0) -->
+      <pose>4.5 4.5 4 0 0.56 -2.356</pose>
+      <link name="link">
+        <sensor name="camera" type="camera">
+          <camera>
+            <horizontal_fov>1.2</horizontal_fov>
+            <image>
+              <width>1280</width>
+              <height>720</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>100</far>
+            </clip>
+          </camera>
+          <always_on>1</always_on>
+          <update_rate>15</update_rate>
+          <topic>destination_camera/image_raw</topic>
+        </sensor>
+      </link>
+    </model>
   </world>
 </sdf>
