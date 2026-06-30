@@ -208,8 +208,8 @@
             </clip>
           </camera>
           <always_on>1</always_on>
-          <!-- Reduced from 15 to 2 fps to limit llvmpipe CPU load and allow sim clock to run faster -->
-          <update_rate>2</update_rate>
+          <!-- Reduced to 5 fps (was 15) to limit llvmpipe load while remaining smooth -->
+          <update_rate>5</update_rate>
           <topic>destination_camera/image_raw</topic>
         </sensor>
       </link>

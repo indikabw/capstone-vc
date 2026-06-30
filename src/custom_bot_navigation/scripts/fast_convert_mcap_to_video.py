@@ -39,25 +39,45 @@ def main():
     reader.set_filter(storage_filter)
 
     bridge = CvBridge()
-    writer = None
+    frames = []
+    timestamps = []
 
-    print(f"Converting {bag_dir} to {output_mp4} ...")
+    print(f"Reading frames from {bag_dir} ...")
     count = 0
     while reader.has_next():
         (topic, data, t) = reader.read_next()
         msg = deserialize_message(data, msg_type)
         
         cv_img = bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
-        if writer is None:
-            height, width = cv_img.shape[:2]
-            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-            writer = cv2.VideoWriter(output_mp4, fourcc, 30.0, (width, height))
-            
-        writer.write(cv_img)
-        count += 1
+        frames.append(cv_img)
         
-    if writer is not None:
-        writer.release()
+        # Use header stamp (simulation time) to compute accurate sim-time duration
+        sim_time = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+        timestamps.append(sim_time)
+        count += 1
+
+    if count == 0:
+        print("No frames found to convert.")
+        sys.exit(1)
+
+    # Calculate dynamic FPS based on simulation time span
+    duration = timestamps[-1] - timestamps[0]
+    if duration > 0:
+        fps = count / duration
+    else:
+        fps = 30.0 # Fallback
+    
+    print(f"Read {count} frames. Sim duration: {duration:.2f}s. Calculated FPS: {fps:.2f}")
+
+    height, width = frames[0].shape[:2]
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    writer = cv2.VideoWriter(output_mp4, fourcc, fps, (width, height))
+    
+    print(f"Writing to {output_mp4} at {fps:.2f} FPS...")
+    for cv_img in frames:
+        writer.write(cv_img)
+        
+    writer.release()
     print(f"Wrote {count} frames to {output_mp4}")
 
 if __name__ == '__main__':
