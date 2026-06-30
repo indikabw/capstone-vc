@@ -13,12 +13,17 @@ def main():
     
     navigator = BasicNavigator()
 
-    print("Waiting for TF buffer to fill...")
-    time.sleep(3.0)
+    print("Waiting for simulation time to advance past 5 seconds (TF buffer fill)...")
+    temp_node = Node('clock_waiter', parameter_overrides=[rclpy.Parameter('use_sim_time', rclpy.Parameter.Type.BOOL, True)])
+    while temp_node.get_clock().now().nanoseconds < 5e9:
+        rclpy.spin_once(temp_node, timeout_sec=0.1)
+    temp_node.destroy_node()
+        
     print("Setting initial pose...")
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = 'map'
-    initial_pose.header.stamp = navigator.get_clock().now().to_msg()
+    initial_pose.header.stamp.sec = 0
+    initial_pose.header.stamp.nanosec = 0
     initial_pose.pose.position.x = 0.0
     initial_pose.pose.position.y = 0.0
     initial_pose.pose.orientation.w = 1.0
@@ -30,7 +35,10 @@ def main():
     print("Sending goal to x=4.0, y=4.0 (should require navigating around obstacles)...")
     goal_pose = PoseStamped()
     goal_pose.header.frame_id = 'map'
-    goal_pose.header.stamp = navigator.get_clock().now().to_msg()
+    # Use zero timestamp so TF lookup uses latest available transform,
+    # avoiding extrapolation errors under the slow llvmpipe simulation clock.
+    goal_pose.header.stamp.sec = 0
+    goal_pose.header.stamp.nanosec = 0
     goal_pose.pose.position.x = 4.0
     goal_pose.pose.position.y = 4.0
     goal_pose.pose.orientation.w = 1.0
