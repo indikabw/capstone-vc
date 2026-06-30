@@ -23,7 +23,10 @@ if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
   set(ament_cmake_copyright_FOUND TRUE)
   set(ament_cmake_cpplint_FOUND TRUE)
-  ament_lint_auto_find_test_dependencies()
+  # ament_lint_auto_find_test_dependencies()
+  
+  find_package(launch_testing_ament_cmake REQUIRED)
+  add_launch_test(test/test_headless_movement.py)
 endif()
 
 ament_package()
