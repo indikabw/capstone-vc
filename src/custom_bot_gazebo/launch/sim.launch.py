@@ -16,7 +16,7 @@ def generate_launch_description():
 
     world_arg = DeclareLaunchArgument(
         'world',
-        default_value='single_room.world',
+        default_value='simple_home.world',
         description='World file to load'
     )
 
@@ -131,18 +131,17 @@ def generate_launch_description():
         output='screen'
     )
 
-    # 5b. (Optional) Robot RGBD camera bridge — disabled for headless nav tests to save CPU.
-    # Uncomment to enable /camera/image_raw for vision agent nodes.
-    # robot_camera_bridge = Node(
-    #     package='ros_gz_image',
-    #     executable='image_bridge',
-    #     arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image'],
-    #     remappings=[
-    #         ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/camera/image_raw')
-    #     ],
-    #     parameters=[{'use_sim_time': True}],
-    #     output='screen'
-    # )
+    # 5b. (Optional) Robot RGBD camera bridge — enabled to record TurtleBot camera feed.
+    robot_camera_bridge = Node(
+        package='ros_gz_image',
+        executable='image_bridge',
+        arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image'],
+        remappings=[
+            ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/camera/image_raw')
+        ],
+        parameters=[{'use_sim_time': True}],
+        output='screen'
+    )
 
     twist_converter_node = Node(
         package='custom_bot_navigation',
@@ -179,6 +178,7 @@ def generate_launch_description():
         spawn_robot,
         bridge,
         destination_camera_bridge,
+        robot_camera_bridge,
         twist_converter_node,
         dynamic_rplidar_tf_node,
         tf_static_republisher_node
