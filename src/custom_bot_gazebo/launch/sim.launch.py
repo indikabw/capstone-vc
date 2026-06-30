@@ -120,17 +120,29 @@ def generate_launch_description():
 
 
 
-    # 5. High-performance image bridge
-    image_bridge = Node(
+    # 5a. Bridge only the fixed overhead destination camera (needed for recording).
+    # The robot's RGBD camera is NOT bridged here to avoid the extra llvmpipe render cost.
+    # Re-enable destination_camera_bridge to record the overhead view.
+    destination_camera_bridge = Node(
         package='ros_gz_image',
         executable='image_bridge',
-        arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image'],
-        remappings=[
-            ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/camera/image_raw')
-        ],
+        arguments=['/destination_camera/image_raw'],
         parameters=[{'use_sim_time': True}],
         output='screen'
     )
+
+    # 5b. (Optional) Robot RGBD camera bridge — disabled for headless nav tests to save CPU.
+    # Uncomment to enable /camera/image_raw for vision agent nodes.
+    # robot_camera_bridge = Node(
+    #     package='ros_gz_image',
+    #     executable='image_bridge',
+    #     arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image'],
+    #     remappings=[
+    #         ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/camera/image_raw')
+    #     ],
+    #     parameters=[{'use_sim_time': True}],
+    #     output='screen'
+    # )
 
     twist_converter_node = Node(
         package='custom_bot_navigation',
@@ -166,7 +178,7 @@ def generate_launch_description():
         robot_state_publisher,
         spawn_robot,
         bridge,
-        image_bridge,
+        destination_camera_bridge,
         twist_converter_node,
         dynamic_rplidar_tf_node,
         tf_static_republisher_node
