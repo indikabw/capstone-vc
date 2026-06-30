@@ -124,7 +124,7 @@ def generate_launch_description():
     image_bridge = Node(
         package='ros_gz_image',
         executable='image_bridge',
-        arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image'],
+        arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/destination_camera/image_raw'],
         remappings=[
             ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgbd_camera/image', '/camera/image_raw')
         ],

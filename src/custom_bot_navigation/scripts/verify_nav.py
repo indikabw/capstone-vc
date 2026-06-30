@@ -13,12 +13,15 @@ def main():
     
     navigator = BasicNavigator()
 
-    print("Waiting for TF buffer to fill...")
-    time.sleep(3.0)
+    print("Waiting for simulation time to advance past 5 seconds (TF buffer fill)...")
+    while navigator.get_clock().now().nanoseconds < 5e9:
+        time.sleep(0.1)
+        
     print("Setting initial pose...")
     initial_pose = PoseStamped()
     initial_pose.header.frame_id = 'map'
-    initial_pose.header.stamp = navigator.get_clock().now().to_msg()
+    initial_pose.header.stamp.sec = 0
+    initial_pose.header.stamp.nanosec = 0
     initial_pose.pose.position.x = 0.0
     initial_pose.pose.position.y = 0.0
     initial_pose.pose.orientation.w = 1.0
