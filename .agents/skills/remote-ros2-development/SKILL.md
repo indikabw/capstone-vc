@@ -9,10 +9,19 @@ This project uses a split-environment architecture. The source code is edited lo
 
 Whenever the user asks you to build, test, or launch ROS 2 code, **you MUST follow this strict workflow**:
 
-## 1. Do Not Use Local ROS 2 Commands
+## 1. Pre-Flight Cleanup (CRITICAL)
+Before starting any new ROS 2 build, launch, or test execution, you MUST always perform the following cleanup tasks to prevent resource starvation or port collisions:
+*   **Kill Local Stale Tasks**: Call the `manage_task` tool with action `list` to inspect active background tasks in the Antigravity chat window. If you see active SSH launch commands or behave tests, terminate them using `manage_task` with action `kill` for each task ID.
+*   **Clean VM Zombie Processes**: Run the following two SSH commands sequentially to stop the ROS 2 daemon and terminate any orphaned Gazebo, ROS 2, or python processes running in the VM (using character brackets in the regex to prevent the `pkill` process from matching and killing its own SSH shell session):
+    1. Stop the ROS 2 daemon process cleanly:
+       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "source /opt/ros/lyrical/setup.bash && ros2 daemon stop || true"`
+    2. Forcefully kill active processes:
+       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon' || true"`
+
+## 2. Do Not Use Local ROS 2 Commands
 Do not attempt to run `colcon`, `ros2`, or `rosdep` natively in the local macOS terminal. They are not available locally.
 
-## 2. Sync Code to the VM Before Building
+## 3. Sync Code to the VM Before Building
 Before executing any remote build commands, you must always push the local modifications to the remote VM to prevent running stale code.
 *   **Remote IP:** `172.16.187.128`
 *   **Remote User:** `indikabw`
@@ -22,14 +31,14 @@ Before executing any remote build commands, you must always push the local modif
 Run the following `rsync` command from the local workspace root:
 `rsync -avz --exclude='.git' ./ indikabw@172.16.187.128:~/capstone-vc/`
 
-## 3. Remote Execution via SSH
+## 4. Remote Execution via SSH
 All ROS 2 commands must be wrapped in an SSH call targeting the VM. Because the VM requires environment variables for ROS 2 and GUI forwarding, use the following template for all SSH executions:
 
 `ssh indikabw@172.16.187.128 "export DISPLAY=:0 && source /opt/ros/lyrical/setup.bash && source ~/capstone-vc/install/setup.bash && cd ~/capstone-vc && <YOUR_COMMAND_HERE>"`
 
 *(Replace `<YOUR_COMMAND_HERE>` with the actual `colcon build` or `ros2 launch` command).*
 
-## 4. Launching GUI Applications (Gazebo, RViz)
+## 5. Launching GUI Applications (Gazebo, RViz)
 If you are launching a node that requires a graphical user interface (e.g., Gazebo via `sim.launch.py`, or RViz via Navigation 2):
 1. Ensure `export DISPLAY=:0` is included in your SSH payload (as shown in the template above). This ensures the window appears on the VM's primary monitor.
 2. If launching a blocking, long-running process (like a `ros2 launch` file), launch it in the background using `nohup ... > /dev/null 2>&1 &` so that your SSH connection doesn't hang indefinitely waiting for the node to exit.
