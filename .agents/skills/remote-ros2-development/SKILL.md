@@ -16,7 +16,7 @@ Before starting any new ROS 2 build, launch, or test execution, you MUST always 
     1. Stop the ROS 2 daemon process cleanly:
        `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "source /opt/ros/lyrical/setup.bash && ros2 daemon stop || true"`
     2. Forcefully kill active processes:
-       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon' || true"`
+       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent' || true"`
 
 ## 2. Do Not Use Local ROS 2 Commands
 Do not attempt to run `colcon`, `ros2`, or `rosdep` natively in the local macOS terminal. They are not available locally.
