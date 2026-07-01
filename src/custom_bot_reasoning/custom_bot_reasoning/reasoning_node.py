@@ -63,15 +63,15 @@ class ReasoningNode(Node):
             self.agent = Agent(
                 name="robot_agent",
                 model="gemini-1.5-flash",
-                instruction=(
-                    "You are an autonomous robot assistant. You can see the environment "
-                    "and move to specific coordinates. "
-                    "Semantic Map: \n"
-                    "- kitchen: x=1.5, y=0.5, theta=0.0\n"
-                    "- living_room: x=-1.0, y=1.0, theta=1.57\n"
-                    "- bedroom: x=0.0, y=-2.0, theta=-1.57\n"
-                    "Analyze the user command and use the navigate_to_pose tool to move to the appropriate location."
-                ),
+                instruction="""
+        You are an autonomous robot assistant. You can see the environment and move to specific coordinates.
+        Semantic Map: 
+        - kitchen: x=5.5, y=1.0, theta=0.0
+        - living_room: x=1.5, y=-0.5, theta=-1.57
+        - bedroom: x=-5.0, y=2.0, theta=3.14
+        
+        Analyze the user command and use the navigate_to_pose tool to move to the appropriate location.
+        """,
                 tools=[self.navigate_to_pose_tool],
             )
         else:
@@ -154,12 +154,12 @@ class ReasoningNode(Node):
         else:
             self.get_logger().info('Mocking ADK reasoning loop.')
             cmd = goal_handle.request.command.lower()
-            if "coffee_table" in cmd:
-                self.navigate_to_pose_tool(2.0, 2.0, 0.0)
+            if "coffee_table" in cmd or "living_room" in cmd:
+                self.navigate_to_pose_tool(1.5, -0.5, -1.57)
             elif "kitchen" in cmd:
-                self.navigate_to_pose_tool(1.5, 0.5, 0.0)
+                self.navigate_to_pose_tool(5.5, 1.0, 0.0)
             elif "bedroom" in cmd:
-                self.navigate_to_pose_tool(0.0, -2.0, -1.57)
+                self.navigate_to_pose_tool(-5.0, 2.0, 3.14)
             summary = "Mock reasoning complete."
         
         self.get_logger().info('Reasoning complete.')
