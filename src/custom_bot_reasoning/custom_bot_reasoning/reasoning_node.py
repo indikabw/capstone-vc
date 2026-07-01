@@ -10,6 +10,7 @@ import threading
 import time
 import math
 import os
+import json
 
 try:
     from google.adk.agents import Agent
@@ -65,14 +66,14 @@ class ReasoningNode(Node):
                 model="gemini-1.5-flash",
                 instruction="""
         You are an autonomous robot assistant. You can see the environment and move to specific coordinates.
-        Semantic Map: 
-        - kitchen: x=5.5, y=1.0, theta=0.0
-        - living_room: x=1.5, y=-0.5, theta=-1.57
-        - bedroom: x=-5.0, y=2.0, theta=3.14
+        Use the get_semantic_map tool to find the layout of the environment and the objects in it. You can reason about which room an object is in based on the layout of other objects.
+        
+        When determining a coordinate to move to, make sure the destination is open enough. The TurtleBot4 has a radius of approximately 0.35m.
+        Use the target object's position and orientation to calculate a safe offset (e.g., 0.5m to 1.0m away) so the robot does not collide with the object.
         
         Analyze the user command and use the navigate_to_pose tool to move to the appropriate location.
         """,
-                tools=[self.navigate_to_pose_tool],
+                tools=[self.navigate_to_pose_tool, self.get_semantic_map_tool],
             )
         else:
             self.agent = None
@@ -87,6 +88,24 @@ class ReasoningNode(Node):
                 self.latest_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             except Exception as e:
                 self.get_logger().error(f'Failed to convert image: {e}')
+
+    def get_semantic_map_tool(self) -> str:
+        """Returns a JSON string containing the semantic map of the environment, including object positions and orientations."""
+        self.get_logger().info('Tool called: get_semantic_map()')
+        
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            pkg_share = get_package_share_directory('custom_bot_reasoning')
+            map_path = os.path.join(pkg_share, 'resource', 'semantic_map.json')
+        except Exception:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            map_path = os.path.join(base_dir, 'resource', 'semantic_map.json')
+            
+        if not os.path.exists(map_path):
+            return '{"error": "semantic_map.json not found"}'
+            
+        with open(map_path, 'r') as f:
+            return f.read()
 
     def navigate_to_pose_tool(self, x: float, y: float, theta: float) -> str:
         """Move the robot to the specified 2D coordinate on the map.
