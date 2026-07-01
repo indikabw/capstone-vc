@@ -16,7 +16,7 @@ def generate_launch_description():
 
     world_arg = DeclareLaunchArgument(
         'world',
-        default_value='single_room.world',
+        default_value='small_house.world',
         description='World file to load'
     )
 
@@ -108,11 +108,13 @@ def generate_launch_description():
             '/odom@nav_msgs/msg/Odometry[gz.msgs.Odometry',
             '/model/custom_bot/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
             '/tf@tf2_msgs/msg/TFMessage[gz.msgs.Pose_V',
-            '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model'
+            '/joint_states@sensor_msgs/msg/JointState[gz.msgs.Model',
+            '/world/default/model/custom_bot/link/rplidar_link/sensor/rplidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan'
         ],
         remappings=[
             ('/cmd_vel', '/cmd_vel_unstamped'),
-            ('/model/custom_bot/tf', '/tf')
+            ('/model/custom_bot/tf', '/tf'),
+            ('/world/default/model/custom_bot/link/rplidar_link/sensor/rplidar/scan', '/scan')
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'
@@ -136,9 +138,9 @@ def generate_launch_description():
     robot_camera_bridge = Node(
         package='ros_gz_image',
         executable='image_bridge',
-        arguments=['/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgb_camera/image'],
+        arguments=['/world/default/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgb_camera/image'],
         remappings=[
-            ('/world/single_room/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgb_camera/image', '/camera/image_raw')
+            ('/world/default/model/custom_bot/link/oakd_rgb_camera_frame/sensor/rgb_camera/image', '/camera/image_raw')
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'

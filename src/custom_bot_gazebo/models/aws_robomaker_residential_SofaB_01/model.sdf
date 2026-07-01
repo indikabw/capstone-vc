@@ -1,11 +1,10 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
   <model name="aws_robomaker_residential_SofaB_01">
+    <static>true</static>
     <link name="link">
 
-      <inertial>
-        <mass>72.5</mass>
-      </inertial>
+      
 
       <collision name="collision">
       

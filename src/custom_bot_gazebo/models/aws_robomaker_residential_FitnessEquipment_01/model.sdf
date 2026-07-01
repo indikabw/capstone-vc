@@ -2,9 +2,7 @@
 <sdf version="1.6">
   <model name="aws_robomaker_residential_FitnessEquipment_01">
     <link name="link">
-      <inertial>
-        <mass>80</mass>
-      </inertial>
+      
       <collision name="collision">
         <geometry>
           <mesh>

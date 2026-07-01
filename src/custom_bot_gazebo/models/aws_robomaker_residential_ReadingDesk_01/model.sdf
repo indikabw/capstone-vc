@@ -1,18 +1,9 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
   <model name="aws_robomaker_residential_ReadingDesk_01">
+    <static>true</static>
     <link name="link">
-      <inertial>
-        <mass>14.6</mass>
-          <inertia>
-            <ixx>0.78</ixx>
-            <ixy>0</ixy>
-            <ixz>0</ixz>
-            <iyy>0.273</iyy>
-            <iyz>0</iyz>
-            <izz> 0.57375</izz>
-          </inertia>
-      </inertial>
+      
       <collision name="collision">
         <geometry>
           <mesh>

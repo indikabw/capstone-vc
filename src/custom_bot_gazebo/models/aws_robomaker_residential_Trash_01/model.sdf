@@ -1,20 +1,10 @@
 <?xml version="1.0" ?>
 <sdf version="1.6">
   <model name="aws_robomaker_residential_Trash_01">
+    <static>true</static>
     <link name="link">
 
-      <inertial>
-    
-        <mass>0.1</mass>
-        <inertia>
-            <ixy>0</ixy>
-            <ixz>0</ixz>
-            <iyz>0</iyz>
-            <ixx>0.05288</ixx>
-            <iyy>0.05288</iyy>
-            <izz>0.09132</izz>
-          </inertia>
-      </inertial>
+      
 
       <collision name="collision">
         <geometry>
