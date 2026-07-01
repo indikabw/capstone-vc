@@ -53,14 +53,17 @@ def main():
         
     bag_path = sys.argv[1]
     output_path = sys.argv[2]
-    topic = '/playback/destination_camera/image_raw'
+    # Topic the video node listens to
+    topic = '/playback/camera/image_raw'
 
     rclpy.init()
     node = VideoConverter(output_path, topic)
     
     # Start the bag playback in a separate process
     print(f"Starting playback of bag: {bag_path}")
-    bag_process = subprocess.Popen(['ros2', 'bag', 'play', bag_path, '--remap', '/destination_camera/image_raw:=/playback/destination_camera/image_raw'])
+    
+    # We must remap the recorded topic to our playback topic to avoid collisions with any live simulation
+    bag_process = subprocess.Popen(['ros2', 'bag', 'play', bag_path, '--remap', '/camera/image_raw:=/playback/camera/image_raw'])
     
     # Spin the node to process frames
     try:

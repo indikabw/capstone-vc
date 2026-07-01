@@ -18,7 +18,7 @@ def generate_launch_description():
     declare_map_yaml_cmd = DeclareLaunchArgument(
         'map',
         default_value=os.path.join(
-            pkg_custom_bot_nav, 'maps', 'single_room.yaml'),
+            pkg_custom_bot_nav, 'maps', 'small_house.yaml'),
         description='Full path to map yaml file to load')
 
     declare_params_file_cmd = DeclareLaunchArgument(
@@ -47,10 +47,10 @@ def generate_launch_description():
         package='ros_gz_bridge',
         executable='parameter_bridge',
         arguments=[
-            '/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan'
+            '/world/small_house/model/custom_bot/link/rplidar_link/sensor/rplidar/scan@sensor_msgs/msg/LaserScan[gz.msgs.LaserScan'
         ],
         remappings=[
-            ('/world/single_room/model/custom_bot/link/rplidar_link/sensor/rplidar/scan', '/scan')
+            ('/world/small_house/model/custom_bot/link/rplidar_link/sensor/rplidar/scan', '/scan')
         ],
         parameters=[{'use_sim_time': use_sim_time}],
         output='screen'

@@ -2,9 +2,7 @@
 <sdf version="1.6">
   <model name="aws_robomaker_residential_RoomWall_01">
     <link name="link">
-      <inertial>
-        <mass>100</mass>
-      </inertial>
+      
       <collision name="collision">
         <geometry>
           <mesh>

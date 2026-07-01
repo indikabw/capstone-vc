@@ -3,9 +3,7 @@
   <model name="aws_robomaker_residential_PortraitD_02">
     <link name="link">
 
-      <inertial>
-        <mass>1.5</mass>
-      </inertial>
+      
 
       <collision name="collision">
         <geometry>

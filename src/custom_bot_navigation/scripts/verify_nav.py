@@ -32,15 +32,15 @@ def main():
     print("Waiting for Nav2 to become active...")
     navigator.waitUntilNav2Active()
 
-    print("Sending goal to x=4.0, y=4.0 (should require navigating around obstacles)...")
+    print("Sending goal to x=6.0, y=1.0 (should require navigating around obstacles)...")
     goal_pose = PoseStamped()
     goal_pose.header.frame_id = 'map'
     # Use zero timestamp so TF lookup uses latest available transform,
     # avoiding extrapolation errors under the slow llvmpipe simulation clock.
     goal_pose.header.stamp.sec = 0
     goal_pose.header.stamp.nanosec = 0
-    goal_pose.pose.position.x = 4.0
-    goal_pose.pose.position.y = 4.0
+    goal_pose.pose.position.x = 6.0
+    goal_pose.pose.position.y = 1.0
     goal_pose.pose.orientation.w = 1.0
 
     navigator.goToPose(goal_pose)
