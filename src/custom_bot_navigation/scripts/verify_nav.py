@@ -32,7 +32,7 @@ def main():
     print("Waiting for Nav2 to become active...")
     navigator.waitUntilNav2Active()
 
-    print("Sending goal to x=6.0, y=1.0 (should require navigating around obstacles)...")
+    print("Sending goal to x=6.0, y=-2.0 (clear area in the kitchen)...")
     goal_pose = PoseStamped()
     goal_pose.header.frame_id = 'map'
     # Use zero timestamp so TF lookup uses latest available transform,
@@ -40,7 +40,7 @@ def main():
     goal_pose.header.stamp.sec = 0
     goal_pose.header.stamp.nanosec = 0
     goal_pose.pose.position.x = 6.0
-    goal_pose.pose.position.y = 1.0
+    goal_pose.pose.position.y = -2.0
     goal_pose.pose.orientation.w = 1.0
 
     navigator.goToPose(goal_pose)
