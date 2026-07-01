@@ -2,6 +2,9 @@
 # record_scenario.sh
 # This script runs the navigation test and records the destination camera to a rosbag.
 
+source /opt/ros/lyrical/setup.bash
+source ~/capstone-vc/install/setup.bash
+
 BAG_NAME="scenario_run_$(date +%Y%m%d_%H%M%S)"
 TOPIC="/camera/image_raw"
 
