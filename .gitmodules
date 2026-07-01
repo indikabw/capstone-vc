@@ -4,5 +4,5 @@
 	branch = jazzy
 [submodule "src/turtlebot4"]
 	path = src/turtlebot4
-	url = https://github.com/turtlebot/turtlebot4.git
+	url = https://github.com/indikabw/turtlebot4.git
 	branch = jazzy
