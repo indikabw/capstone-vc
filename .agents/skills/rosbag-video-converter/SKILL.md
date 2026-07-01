@@ -42,9 +42,9 @@ BAG_PID=$!
 ```
 
 ### 2. Clean Shutdown & Reindexing
-When stopping the recording, use a graceful interrupt. Because `rosbag2` runs in multiple threads, it must be terminated via `SIGINT`:
+When stopping the recording, use a graceful interrupt. Because the `rosbag2` recorder is launched through a `python3` wrapper in ROS 2, `pkill -f` on its name is unreliable and fails silently. You must capture its Process ID and terminate it via `SIGTERM`:
 ```bash
-pkill -INT -f "rosbag2"
+kill -TERM $BAG_PID
 ```
 
 If the recorder was terminated before it could finalize the MCAP file footer, the bag will be corrupted (`File end magic is invalid`). You MUST reindex it before attempting conversion:

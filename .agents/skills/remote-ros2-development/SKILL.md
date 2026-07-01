@@ -41,7 +41,8 @@ All ROS 2 commands must be wrapped in an SSH call targeting the VM. Because the 
 ## 5. Launching GUI Applications (Gazebo, RViz)
 If you are launching a node that requires a graphical user interface (e.g., Gazebo via `sim.launch.py`, or RViz via Navigation 2):
 1. Ensure `export DISPLAY=:0` is included in your SSH payload (as shown in the template above). This ensures the window appears on the VM's primary monitor.
-2. If launching a blocking, long-running process (like a `ros2 launch` file), launch it in the background using `nohup ... > /dev/null 2>&1 &` so that your SSH connection doesn't hang indefinitely waiting for the node to exit.
+2. **Gazebo Headless Rendering (CRITICAL)**: Because the VM lacks hardware GPU acceleration, Gazebo will crash with an OpenGL error (`OpenGL 3.3 is not supported`) unless you force software rendering. Always prepend these variables to your Gazebo launch commands: `export LIBGL_ALWAYS_SOFTWARE=1 && export GALLIUM_DRIVER=llvmpipe && <command>`
+3. If launching a blocking, long-running process (like a `ros2 launch` file), launch it in the background using `nohup ... > /dev/null 2>&1 &` so that your SSH connection doesn't hang indefinitely waiting for the node to exit.
 
 ## 6. Awaiting Asynchronous Tasks & Liveness Timers (CRITICAL)
 When triggering builds, tests, or launches that run in the background (asynchronous tasks in the Antigravity chat):
