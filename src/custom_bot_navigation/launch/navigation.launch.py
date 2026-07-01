@@ -61,6 +61,6 @@ def generate_launch_description():
     ld.add_action(declare_params_file_cmd)
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(nav2_bringup_cmd)
-    ld.add_action(scan_bridge)
+    ld.add_action(TimerAction(period=5.0, actions=[scan_bridge]))
 
     return ld

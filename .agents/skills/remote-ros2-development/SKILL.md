@@ -31,12 +31,17 @@ Before executing any remote build commands, you must always push the local modif
 Run the following `rsync` command from the local workspace root:
 `rsync -avz --exclude='.git' ./ indikabw@172.16.187.128:~/capstone-vc/`
 
+**CRITICAL WARNING:** NEVER use the `--delete` flag with `rsync`. The VM workspace often contains third-party ROS 2 source packages (e.g. `navigation2` because it's not yet released on `lyrical`) that do not exist locally on the Mac. Using `--delete` will obliterate them and cause catastrophic build failures.
+
 ## 4. Remote Execution via SSH
 All ROS 2 commands must be wrapped in an SSH call targeting the VM. Because the VM requires environment variables for ROS 2 and GUI forwarding, use the following template for all SSH executions:
 
 `ssh indikabw@172.16.187.128 "export DISPLAY=:0 && source /opt/ros/lyrical/setup.bash && source ~/capstone-vc/install/setup.bash && cd ~/capstone-vc && <YOUR_COMMAND_HERE>"`
 
 *(Replace `<YOUR_COMMAND_HERE>` with the actual `colcon build` or `ros2 launch` command).*
+
+**COMPILATION WARNING (GCC 15 on Lyrical):** 
+When compiling third-party code like Navigation2, GCC 15 emits strict warnings that ROS 2 linters treat as errors (via `-Werror`). You MUST always append `--cmake-args -DAMENT_CMAKE_CXX_WARNINGS_AS_ERRORS=OFF` to your `colcon build` commands. If packages manually hardcode `-Werror` inside their CMake macros, you must strip them out using `sed` before compiling.
 
 ## 5. Launching GUI Applications (Gazebo, RViz)
 If you are launching a node that requires a graphical user interface (e.g., Gazebo via `sim.launch.py`, or RViz via Navigation 2):
