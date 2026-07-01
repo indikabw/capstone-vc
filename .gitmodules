@@ -1,6 +1,6 @@
 [submodule "src/open_manipulator"]
 	path = src/open_manipulator
-	url = https://github.com/ROBOTIS-GIT/open_manipulator.git
+	url = https://github.com/indikabw/open_manipulator.git
 	branch = jazzy
 [submodule "src/turtlebot4"]
 	path = src/turtlebot4
