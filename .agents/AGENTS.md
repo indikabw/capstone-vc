@@ -15,7 +15,7 @@ To prevent resource starvation, lock-ups, and orphaned processes on the developm
     1. Stop the ROS 2 daemon process cleanly (requires sourcing the setup first):
        `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "source /opt/ros/lyrical/setup.bash && ros2 daemon stop || true"`
     2. Forcefully kill active processes (using character brackets in regex to prevent the `pkill` process from matching and killing its own SSH shell session):
-       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent' || true"`
+       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher' || true"`
 *   **Verify Cleanup**: If SSH commands time out, it means the VM is overwhelmed by zombie processes. DO NOT PROCEED until the VM is rebooted or processes are successfully verified dead.
 *   **Clean Discovery Graph**: Always stop the ROS 2 daemon process on the VM as part of the cleanup to ensure the DDS node discovery graph is completely reset. This avoids naming collisions and stale topic listings on subsequent launches.
 
