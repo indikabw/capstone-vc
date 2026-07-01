@@ -3,7 +3,7 @@
 # This script runs the navigation test and records the destination camera to a rosbag.
 
 BAG_NAME="scenario_run_$(date +%Y%m%d_%H%M%S)"
-TOPIC="/destination_camera/image_raw"
+TOPIC="/camera/image_raw"
 
 echo "Starting rosbag recording for topic $TOPIC..."
 ros2 bag record -o $BAG_NAME --topics $TOPIC &
