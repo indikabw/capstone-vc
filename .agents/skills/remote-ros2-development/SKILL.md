@@ -16,7 +16,7 @@ Before starting any new ROS 2 build, launch, or test execution, you MUST always 
     1. Stop the ROS 2 daemon process cleanly:
        `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "source /opt/ros/lyrical/setup.bash && ros2 daemon stop || true"`
     2. Forcefully kill active processes:
-       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon' || true"`
+       `ssh -o ConnectTimeout=5 indikabw@172.16.187.128 "pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent' || true"`
 
 ## 2. Do Not Use Local ROS 2 Commands
 Do not attempt to run `colcon`, `ros2`, or `rosdep` natively in the local macOS terminal. They are not available locally.
@@ -48,3 +48,13 @@ When triggering builds, tests, or launches that run in the background (asynchron
 1. **Set Sync Timeout**: If a command is expected to complete within 10 seconds, set `WaitMsBeforeAsync` to a value up to `10000` to run it synchronously and check its output immediately.
 2. **Yield Prompt Control**: For longer commands, do NOT say "I will wait 35s and report back" without ending your turn. Output your summary, and stop calling tools (yield control). The system will automatically wake you up when the command outputs or completes.
 3. **Use Liveness/Cleanup Timers**: If there's a risk the command might hang (e.g. Gazebo launches, BDD test suites), always schedule a one-shot liveness timer using the `schedule` tool. Set the `TimerCondition` to the target task ID so that you are awakened if it fails to finish or report back in a timely manner.
+
+## 7. Pre-Flight Topic Verification (CRITICAL)
+Whenever you are about to record a rosbag, test an agent's vision pipeline, or verify a node that relies on a specific topic (e.g., `/camera/image_raw`), you **must** verify that the topic exists and is actively publishing data.
+Blindly running scripts without verifying topic output is a common pitfall that leads to wasted simulation runs.
+
+1. **Check if the topic exists:**
+   `ssh indikabw@172.16.187.128 "source /opt/ros/lyrical/setup.bash && ros2 topic info <TOPIC_NAME>"`
+2. **Verify data is actually flowing:**
+   `ssh indikabw@172.16.187.128 "source /opt/ros/lyrical/setup.bash && ros2 topic echo <TOPIC_NAME> --once > /dev/null"`
+If `ros2 topic echo` hangs, the topic is not publishing data (e.g., Gazebo bridge misconfigured). You must fix the root cause before proceeding.

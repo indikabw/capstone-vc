@@ -17,7 +17,20 @@ This skill handles recording image topics to MCAP rosbags and converting them in
 
 ## Workflow
 
-### 1. Recording the Topic
+### 1. Pre-Flight Topic Verification (CRITICAL)
+Before starting a recording, you **must** verify that the target topic exists and is actively publishing data. Blindly recording a topic that doesn't exist or isn't bridging correctly will result in empty bags and wasted simulation runs.
+
+Run the following inside the VM to verify:
+```bash
+# Check if the topic exists and has publishers
+ros2 topic info /destination_camera/image_raw
+
+# Verify data is actually flowing (should return 1 message and exit)
+ros2 topic echo /destination_camera/image_raw --once > /dev/null
+```
+If `ros2 topic echo` hangs, the topic is not publishing data. You must fix the Gazebo bridge or simulation setup before recording.
+
+### 2. Recording the Topic
 To record a camera or image topic in the background, use `ros2 bag record`.
 > [!IMPORTANT]
 > Under low-performance environments (e.g., VMs using `llvmpipe` software rendering), always set the camera's update rate to a lower rate (e.g., 2–5Hz) and disable other unused rendering sensors to avoid CPU starvation.
