@@ -158,6 +158,8 @@ class ReasoningNode(Node):
                 self.navigate_to_pose_tool(2.0, 2.0, 0.0)
             elif "kitchen" in cmd:
                 self.navigate_to_pose_tool(1.5, 0.5, 0.0)
+            elif "bedroom" in cmd:
+                self.navigate_to_pose_tool(0.0, -2.0, -1.57)
             summary = "Mock reasoning complete."
         
         self.get_logger().info('Reasoning complete.')
