@@ -171,15 +171,67 @@ class ReasoningNode(Node):
                 self.get_logger().error(f"ADK Agent failed: {e}")
                 summary = f"Reasoning failed: {e}"
         else:
-            self.get_logger().info('Mocking ADK reasoning loop.')
+            self.get_logger().info('Mocking ADK reasoning loop using semantic map.')
             cmd = goal_handle.request.command.lower()
-            if "coffee_table" in cmd or "living_room" in cmd:
-                self.navigate_to_pose_tool(1.5, -0.5, -1.57)
-            elif "kitchen" in cmd:
-                self.navigate_to_pose_tool(5.5, 1.0, 0.0)
-            elif "bedroom" in cmd:
-                self.navigate_to_pose_tool(-5.0, 2.0, 3.14)
-            summary = "Mock reasoning complete."
+            
+            import json
+            try:
+                from ament_index_python.packages import get_package_share_directory
+                pkg_share = get_package_share_directory('custom_bot_reasoning')
+                map_path = os.path.join(pkg_share, 'resource', 'semantic_map.json')
+            except Exception:
+                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+                map_path = os.path.join(base_dir, 'resource', 'semantic_map.json')
+                
+            matched_obj = None
+            best_match = None
+            if os.path.exists(map_path):
+                with open(map_path, 'r') as f:
+                    sem_map = json.load(f)
+                
+                # Check for direct keyword matches
+                cmd_clean = cmd.replace(" ", "").replace("_", "")
+                for obj_name in sem_map.keys():
+                    clean_name = obj_name.split('_')[0].lower()
+                    if clean_name in cmd_clean:
+                        best_match = obj_name
+                        break
+                
+                # Handlers for generic room names
+                if not best_match:
+                    if "bedroom" in cmd:
+                        best_match = "Bed_01_001"
+                    elif "kitchen" in cmd:
+                        best_match = "KitchenTable_01_001"
+                    elif "living" in cmd or "sofa" in cmd:
+                        best_match = "SofaC_01_001"
+                
+                if best_match:
+                    matched_obj = sem_map[best_match]
+                    self.get_logger().info(f"Mock matched command '{cmd}' to object '{best_match}'")
+            
+            if matched_obj:
+                x = matched_obj["position"]["x"]
+                y = matched_obj["position"]["y"]
+                yaw = matched_obj["orientation"]["yaw"]
+                
+                # Offset: move 1.0m in the direction of the object's orientation
+                # and face the object
+                offset_dist = 1.0
+                dest_x = x + offset_dist * math.cos(yaw)
+                dest_y = y + offset_dist * math.sin(yaw)
+                dest_theta = yaw + math.pi
+                if dest_theta > math.pi:
+                    dest_theta -= 2 * math.pi
+                elif dest_theta < -math.pi:
+                    dest_theta += 2 * math.pi
+                    
+                self.get_logger().info(f"Calculated target: x={dest_x:.2f}, y={dest_y:.2f}, theta={dest_theta:.2f}")
+                self.navigate_to_pose_tool(dest_x, dest_y, dest_theta)
+                summary = f"Mock reasoning successfully routed to {best_match}."
+            else:
+                self.get_logger().warn(f"Mock reasoning could not find match for command '{cmd}'")
+                summary = "Mock reasoning failed to find location."
         
         self.get_logger().info('Reasoning complete.')
         goal_handle.succeed()
