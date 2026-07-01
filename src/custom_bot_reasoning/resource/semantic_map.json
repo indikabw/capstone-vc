@@ -1,0 +1,1046 @@
+{
+  "AirconditionerA_01_001": {
+    "position": {
+      "x": -9.19941,
+      "y": 2.41123,
+      "z": 2.084544
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "AirconditionerB_01_001": {
+    "position": {
+      "x": -2.004656,
+      "y": -5.22661,
+      "z": 0.003485
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Ball_01_001": {
+    "position": {
+      "x": 3.295503,
+      "y": 4.225674,
+      "z": 0.318684
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Ball_01_003": {
+    "position": {
+      "x": -6.945503,
+      "y": -4.22174,
+      "z": 0.318684
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Bed_01_001": {
+    "position": {
+      "x": -6.165067,
+      "y": 2.03056,
+      "z": -1e-05
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "NightStand_01_001": {
+    "position": {
+      "x": -7.72551,
+      "y": 2.86042,
+      "z": 0.005258
+    },
+    "orientation": {
+      "roll": -2e-06,
+      "pitch": 0.0,
+      "yaw": 0.0
+    }
+  },
+  "NightStand_01_002": {
+    "position": {
+      "x": -4.407341,
+      "y": 2.86042,
+      "z": 0.005256
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": 2e-06,
+      "yaw": 0.0
+    }
+  },
+  "Board_01_001": {
+    "position": {
+      "x": 2.779073,
+      "y": -5.392703,
+      "z": 1.538173
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "ChairA_01_001": {
+    "position": {
+      "x": 7.11516,
+      "y": 0.209028,
+      "z": 0.024685
+    },
+    "orientation": {
+      "roll": 1e-06,
+      "pitch": -0.0,
+      "yaw": -1.55607
+    }
+  },
+  "ChairA_01_002": {
+    "position": {
+      "x": 6.25506,
+      "y": 0.219468,
+      "z": 0.011308
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": 0.0,
+      "yaw": -1.50414
+    }
+  },
+  "ChairA_01_003": {
+    "position": {
+      "x": 6.06678,
+      "y": 1.68075,
+      "z": 0.01
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 1.56986
+    }
+  },
+  "ChairA_01_004": {
+    "position": {
+      "x": 7.00277,
+      "y": 1.67074,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 1.52363
+    }
+  },
+  "ChairA_01_005": {
+    "position": {
+      "x": -8.27094,
+      "y": 1.91665,
+      "z": 0.03665
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "ChairD_01_001": {
+    "position": {
+      "x": -1.380775,
+      "y": 4.104456,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "ChairD_01_002": {
+    "position": {
+      "x": 0.325214,
+      "y": 4.104456,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -3.138741
+    }
+  },
+  "ChairD_01_003": {
+    "position": {
+      "x": -8.270775,
+      "y": -4.504456,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.869673
+    }
+  },
+  "Chandelier_01_001": {
+    "position": {
+      "x": 1.221061,
+      "y": 4.15574,
+      "z": 1.295
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Chandelier_01_002": {
+    "position": {
+      "x": -6.451061,
+      "y": -0.69204,
+      "z": 1.81
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Chandelier_01_003": {
+    "position": {
+      "x": 7.824061,
+      "y": -1.59,
+      "z": 1.751
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Chandelier_01_004": {
+    "position": {
+      "x": 1.221061,
+      "y": -1.59204,
+      "z": 1.7873
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Carpet_01_001": {
+    "position": {
+      "x": 0.78505,
+      "y": -1.106647,
+      "z": 0.001106
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Carpet_01_002": {
+    "position": {
+      "x": 2.85405,
+      "y": 3.45,
+      "z": 0.000585
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "SecurityCamera_01_001": {
+    "position": {
+      "x": 0.842134,
+      "y": -4.996294,
+      "z": 0.495067
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -2.841039
+    }
+  },
+  "CoffeeTable_01_001": {
+    "position": {
+      "x": 1.512301,
+      "y": -1.733438,
+      "z": 0.041983
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": 0.0,
+      "yaw": 0.01
+    }
+  },
+  "CookingBench_01_001": {
+    "position": {
+      "x": 9.038383,
+      "y": -3.35114,
+      "z": 0.90361
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 3.137133
+    }
+  },
+  "Curtain_01_001": {
+    "position": {
+      "x": -9.172642,
+      "y": 0.20376,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "KitchenTable_01_001": {
+    "position": {
+      "x": 6.55269,
+      "y": 0.951173,
+      "z": -6e-06
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.56413
+    }
+  },
+  "ReadingDesk_01_001": {
+    "position": {
+      "x": -8.987262,
+      "y": 2.057058,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -0.004638
+    }
+  },
+  "BalconyTable_01_001": {
+    "position": {
+      "x": -0.55624,
+      "y": 4.111241,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Door_01_001": {
+    "position": {
+      "x": 6.001449,
+      "y": -5.549002,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Dumbbell_01_001": {
+    "position": {
+      "x": 2.512849,
+      "y": 2.717787,
+      "z": 0.002183
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Tablet_01_001": {
+    "position": {
+      "x": 1.57283,
+      "y": -1.775857,
+      "z": 0.40179
+    },
+    "orientation": {
+      "roll": -0.020625,
+      "pitch": -8e-05,
+      "yaw": -0.006317
+    }
+  },
+  "FitnessEquipment_01_001": {
+    "position": {
+      "x": 3.48472,
+      "y": 3.169104,
+      "z": 0.003168
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "FoldingDoor_01_001": {
+    "position": {
+      "x": -2.461096,
+      "y": 1.844219,
+      "z": 0.041881
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "FoldingDoor_01_002": {
+    "position": {
+      "x": -2.461096,
+      "y": -4.05332,
+      "z": 0.041881
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Handle_01_001": {
+    "position": {
+      "x": 5.724,
+      "y": -5.523,
+      "z": 0.9938
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -3.1415
+    }
+  },
+  "HouseWallB_01_001": {
+    "position": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "FloorB_01_001": {
+    "position": {
+      "x": 0.0,
+      "y": 0.0,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "FoldingDoor_02_001": {
+    "position": {
+      "x": 4.674231,
+      "y": 2.46451,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 3.14159
+    }
+  },
+  "FoldingDoor_02_002": {
+    "position": {
+      "x": 4.8912,
+      "y": -4.84968,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "KitchenCabinet_01_001": {
+    "position": {
+      "x": 8.002009,
+      "y": -3.836509,
+      "z": 0.012068
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -3.140001
+    }
+  },
+  "KitchenUtensils_01_001": {
+    "position": {
+      "x": 9.285478,
+      "y": -5.021261,
+      "z": 1.141805
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "LightC_01_001": {
+    "position": {
+      "x": 1.769567,
+      "y": -5.444371,
+      "z": 2.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "LightC_01_002": {
+    "position": {
+      "x": -0.138245,
+      "y": -5.444371,
+      "z": 2.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "PortraitA_01": {
+    "position": {
+      "x": -2.71236,
+      "y": -4.817539,
+      "z": 1.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 1.566796
+    }
+  },
+  "PortraitB_01": {
+    "position": {
+      "x": -1.279683,
+      "y": -5.42963,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": -0.076901,
+      "pitch": 0.0,
+      "yaw": -3.116718
+    }
+  },
+  "PortraitB_02": {
+    "position": {
+      "x": 5.737017,
+      "y": 3.08031,
+      "z": 0.3
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "PortraitB_03": {
+    "position": {
+      "x": 3.07138,
+      "y": -5.349366,
+      "z": 0.005494
+    },
+    "orientation": {
+      "roll": -0.168428,
+      "pitch": 0.0,
+      "yaw": 3.104232
+    }
+  },
+  "PortraitA_02": {
+    "position": {
+      "x": 7.937017,
+      "y": 3.08031,
+      "z": 0.3
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 3.14
+    }
+  },
+  "PortraitC_01": {
+    "position": {
+      "x": -9.294904,
+      "y": -4.526084,
+      "z": 1.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 1.554734
+    }
+  },
+  "PortraitD_01": {
+    "position": {
+      "x": 0.789763,
+      "y": -5.478725,
+      "z": 1.8
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 3.138531
+    }
+  },
+  "PortraitD_02": {
+    "position": {
+      "x": 6.870181,
+      "y": 3.08031,
+      "z": 1.488439
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "PortraitE_01": {
+    "position": {
+      "x": -5.773094,
+      "y": -5.492466,
+      "z": 1.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 3.132627
+    }
+  },
+  "PortraitE_02": {
+    "position": {
+      "x": -6.193025,
+      "y": -1.590208,
+      "z": 0.3
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.00429
+    }
+  },
+  "DeskPortraitA_01": {
+    "position": {
+      "x": -0.036864,
+      "y": -5.110156,
+      "z": 0.49866
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 2.927784
+    }
+  },
+  "DeskPortraitA_02": {
+    "position": {
+      "x": 2.046082,
+      "y": -1.892926,
+      "z": 0.070388
+    },
+    "orientation": {
+      "roll": -0.018328,
+      "pitch": -0.000441,
+      "yaw": 1.576216
+    }
+  },
+  "DeskPortraitC_01": {
+    "position": {
+      "x": -7.746377,
+      "y": 2.731075,
+      "z": 0.69462
+    },
+    "orientation": {
+      "roll": 0.000488,
+      "pitch": -0.000359,
+      "yaw": -0.055499
+    }
+  },
+  "DeskPortraitC_02": {
+    "position": {
+      "x": 0.964613,
+      "y": -1.586951,
+      "z": 0.127676
+    },
+    "orientation": {
+      "roll": 0.001614,
+      "pitch": -0.000545,
+      "yaw": -1.578699
+    }
+  },
+  "DeskPortraitD_01": {
+    "position": {
+      "x": 2.64556,
+      "y": -5.376225,
+      "z": 1.573738
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -3.112826
+    }
+  },
+  "DeskPortraitD_02": {
+    "position": {
+      "x": -0.589211,
+      "y": -5.10989,
+      "z": 0.192145
+    },
+    "orientation": {
+      "roll": -1.5e-05,
+      "pitch": -0.000174,
+      "yaw": -3.112544
+    }
+  },
+  "DeskPortraitD_03": {
+    "position": {
+      "x": 1.826729,
+      "y": -1.464881,
+      "z": 0.126208
+    },
+    "orientation": {
+      "roll": 1e-05,
+      "pitch": 6e-06,
+      "yaw": -3.11438
+    }
+  },
+  "DeskPortraitD_04": {
+    "position": {
+      "x": 4.302132,
+      "y": -5.176568,
+      "z": 0.202496
+    },
+    "orientation": {
+      "roll": 0.007118,
+      "pitch": -1e-06,
+      "yaw": 3.046683
+    }
+  },
+  "DeskPortraitB_01": {
+    "position": {
+      "x": 3.547376,
+      "y": -5.083898,
+      "z": -0.01266
+    },
+    "orientation": {
+      "roll": -0.336622,
+      "pitch": -1e-06,
+      "yaw": 3.046741
+    }
+  },
+  "DeskPortraitB_02": {
+    "position": {
+      "x": 2.48627,
+      "y": -5.102525,
+      "z": -0.01266
+    },
+    "orientation": {
+      "roll": -0.336621,
+      "pitch": 0.0,
+      "yaw": 3.046798
+    }
+  },
+  "Rangehood_01_001": {
+    "position": {
+      "x": 9.019794,
+      "y": -3.36994,
+      "z": 1.507605
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Refrigerator_01_001": {
+    "position": {
+      "x": 8.702731,
+      "y": -1.032031,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.563499
+    }
+  },
+  "SeasoningBox_01_001": {
+    "position": {
+      "x": 9.107968,
+      "y": -2.651726,
+      "z": 0.902458
+    },
+    "orientation": {
+      "roll": -6e-06,
+      "pitch": 3.4e-05,
+      "yaw": 0.00129
+    }
+  },
+  "ShoeRack_01_001": {
+    "position": {
+      "x": 4.297978,
+      "y": -5.173566,
+      "z": 0.0
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "SofaC_01_001": {
+    "position": {
+      "x": 0.330699,
+      "y": -1.902792,
+      "z": 0.065992
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": 0.0,
+      "yaw": 1.571733
+    }
+  },
+  "Tableware_01_001": {
+    "position": {
+      "x": 7.15317,
+      "y": 0.982767,
+      "z": 0.817812
+    },
+    "orientation": {
+      "roll": -0.001238,
+      "pitch": -0.000976,
+      "yaw": 1.02476
+    }
+  },
+  "Trash_01_001": {
+    "position": {
+      "x": 2.360151,
+      "y": -0.796238,
+      "z": 0.011
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Trash_01_002": {
+    "position": {
+      "x": -8.704151,
+      "y": 1.00058,
+      "z": 0.011
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "TV_01_001": {
+    "position": {
+      "x": 0.824259,
+      "y": -5.382968,
+      "z": 0.676282
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.561744
+    }
+  },
+  "TV_02_001": {
+    "position": {
+      "x": -6.197322,
+      "y": -1.388739,
+      "z": 0.676282
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.561744
+    }
+  },
+  "TVCabinet_01_001": {
+    "position": {
+      "x": 0.629509,
+      "y": -5.183576,
+      "z": -0.017049
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 1.5792
+    }
+  },
+  "Vase_01_001": {
+    "position": {
+      "x": 3.055663,
+      "y": -5.41308,
+      "z": 1.574958
+    },
+    "orientation": {
+      "roll": 3e-06,
+      "pitch": 0.0017,
+      "yaw": 0.00084
+    }
+  },
+  "RoomWall_01_001": {
+    "position": {
+      "x": -6.09755,
+      "y": -1.49618,
+      "z": 0.028124
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "Wardrobe_01_001": {
+    "position": {
+      "x": -3.14671,
+      "y": 2.476204,
+      "z": 0.000704
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.569673
+    }
+  },
+  "RoomWindow_01_001": {
+    "position": {
+      "x": -9.4186,
+      "y": -0.026285,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "RoomWindow_01_002": {
+    "position": {
+      "x": -9.4186,
+      "y": -2.37409,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  },
+  "RoomWindow_01_003": {
+    "position": {
+      "x": 9.422616,
+      "y": -3.373981,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -3.136099
+    }
+  },
+  "RoomWindow_01_004": {
+    "position": {
+      "x": 9.422558,
+      "y": 0.96852,
+      "z": 0.496581
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -3.136099
+    }
+  },
+  "RoomWindow_01_005": {
+    "position": {
+      "x": 4.722317,
+      "y": 4.470281,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -3.136099
+    }
+  },
+  "RoomWindow_01_006": {
+    "position": {
+      "x": 3.48852,
+      "y": 5.600688,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.566274
+    }
+  },
+  "RoomWindow_01_007": {
+    "position": {
+      "x": 1.140949,
+      "y": 5.600688,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.566274
+    }
+  },
+  "RoomWindow_01_008": {
+    "position": {
+      "x": -1.19934,
+      "y": 5.600688,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": -1.566274
+    }
+  },
+  "RoomWindow_01_009": {
+    "position": {
+      "x": -2.396624,
+      "y": 4.387607,
+      "z": 0.502739
+    },
+    "orientation": {
+      "roll": 0.0,
+      "pitch": -0.0,
+      "yaw": 0.0
+    }
+  }
+}
