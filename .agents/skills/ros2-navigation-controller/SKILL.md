@@ -25,3 +25,19 @@ Because MoveIt2 requires a static Semantic Robot Description Format (SRDF) to un
 *   Configure the Slam Toolbox in `async` mode for online mapping.
 *   Configure Nav2 parameters to account for the altered footprint and center of mass introduced by the OpenManipulator-X.
 *   The reasoning agent will interface with Nav2 via the `NavigateToPose` action server.
+
+## 4. Key Troubleshooting and Pitfalls
+
+### 4.1 Gazebo World Name Topic Namespace Mismatch
+When bridging sensor data (e.g., LiDAR scans, cameras) or robot transformations, Gazebo creates topics prefixed with the world name. If the world name in the `.world` XML file is `<world name='default'>`, all transport topics will be prefixed as `/world/default/...`.
+- **Pitfall**: Attempting to bridge `/world/small_house/...` will fail silently if the actual world name inside the loaded `.world` file is `default` (which commonly occurs when launching Gazebo default configurations).
+- **Remedy**: Always verify the exact `<world name='...'>` element in your world file and align your `ros_gz_bridge` and `image_bridge` arguments to use that prefix.
+
+### 4.2 Missing LiDAR Bridge Blocking TF Tree
+AMCL depends on receiving the `/scan` topic to calculate laser-match transforms. If `/scan` is not bridged, AMCL will sit indefinitely waiting for scans.
+- **Pitfall**: Since AMCL does not run updates without scans, it will not publish the `map -> odom` transform. This breaks the TF tree chain, causing `global_costmap` to throw errors about missing frame transforms, stalling the entire Nav2 stack startup.
+- **Remedy**: Explicitly bridge `/world/<world_name>/model/custom_bot/link/rplidar_link/sensor/rplidar/scan` to `/scan` on launch.
+
+### 4.3 Lifecycle manager timeout in Headless VM Environments
+In resource-constrained VMs running software rendering, Nav2 lifecycle manager nodes may experience startup timing issues.
+- **Remedy**: Configure `set_initial_pose: true` and specify a valid coordinates mapping (e.g. `initial_pose: [x, y, z, yaw]`) under the `amcl` parameters inside `nav2_params.yaml`. This ensures that AMCL initializes immediately without waiting for manual RViz coordinates.
