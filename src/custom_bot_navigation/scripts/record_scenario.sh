@@ -16,7 +16,7 @@ echo "Starting navigation scenario (verify_nav.py)..."
 PYTHONUNBUFFERED=1 ros2 run custom_bot_navigation verify_nav.py
 
 echo "Navigation script finished. Stopping rosbag recording..."
-pkill -INT -f "rosbag2"
+kill -INT $BAG_PID
 wait $BAG_PID
 
 echo "Recording saved to $BAG_NAME"
