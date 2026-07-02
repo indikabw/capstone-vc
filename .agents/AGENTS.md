@@ -42,13 +42,23 @@ To avoid blocking the developer's chat session or leaving dangling asynchronous 
 
 ## Remote Syncing and Compilation (CRITICAL)
 
-### 1. Never Use `rsync --delete` Blindly
-*   The VM workspace often contains third-party ROS 2 source packages (like `navigation2`) or binary artifacts in `src/` that do not exist in the local Mac workspace. 
-*   When syncing code from the local Mac to the VM, **NEVER** use the `--delete` flag with `rsync` unless explicitly told to. Doing so will obliterate the remote-only source code and cause catastrophic build failures.
+### 1. ALWAYS Sync Code Before Testing or Building
+*   The primary development environment is on your local Mac, but all builds and runs happen remotely on the VM.
+*   **CRITICAL WORKFLOW:** Whenever you make a change to a local file (e.g., Python code, shell scripts, launch files), you MUST run `rsync` to push the changes to the VM *before* running `colcon build` or executing test scripts. Do not assume the code is magically synced.
 *   Stick to: `rsync -avz --exclude='.git' ./ indikabw@172.16.187.128:~/capstone-vc/`
 
-### 2. Disabling `-Werror` on Lyrical (Ubuntu 26.04 / GCC 15)
+### 2. Never Use `rsync --delete` Blindly
+*   The VM workspace often contains third-party ROS 2 source packages (like `navigation2`) or binary artifacts in `src/` that do not exist in the local Mac workspace. 
+*   When syncing code from the local Mac to the VM, **NEVER** use the `--delete` flag with `rsync` unless explicitly told to. Doing so will obliterate the remote-only source code and cause catastrophic build failures.
+
+### 3. Disabling `-Werror` on Lyrical (Ubuntu 26.04 / GCC 15)
 *   The Lyrical distribution uses GCC 15, which introduces many strict warnings (e.g., `deprecated-declarations`, `free-nonheap-object`).
 *   Many ROS 2 packages enforce `-Werror` (warnings as errors) via `ament_lint_auto`. When building unreleased packages from source, this guarantees a build failure.
 *   **Always globally disable warnings as errors** when building third-party code: pass `--cmake-args -DAMENT_CMAKE_CXX_WARNINGS_AS_ERRORS=OFF` to your `colcon build` command.
 *   If a package explicitly hardcodes `-Werror` in a `CMakeLists.txt` or a `nav2_package.cmake` macro, you must use a tool (like `sed`) to physically strip it from those files before compiling.
+
+## Avoiding Script Redundancy
+
+*   **Do Not Create Ad-Hoc Scripts in the Root Directory:** Never create quick utility or test scripts (e.g., `convert.py`, `test.py`, `fix.py`) directly in the workspace root.
+*   **Use Existing Directories:** Always place scripts inside the `scripts/` directory or appropriately within the `src/` packages.
+*   **Check Before Creating:** Before writing a new script to perform a task (like converting bags to videos, fixing worlds, or testing APIs), you MUST check the `scripts/` folder using `list_dir` or `grep_search` to see if a script already exists for that exact purpose. Do not reinvent the wheel and create duplicate files.
