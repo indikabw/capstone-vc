@@ -29,7 +29,7 @@ amcl:
     robot_model_type: "nav2_amcl::DifferentialMotionModel"
     save_pose_rate: 0.5
     set_initial_pose: true
-    initial_pose: {x: -2.0, y: -0.5, z: 0.0, yaw: 0.0}
+    initial_pose: {x: 0.0, y: 0.0, z: 0.0, yaw: 0.0}
     sigma_hit: 0.2
     tf_broadcast: true
     transform_tolerance: 1.0
@@ -610,3 +610,11 @@ loopback_simulator:
     scan_angle_max: 3.1415
     scan_angle_increment: 0.02617
     scan_use_inf: true
+
+lifecycle_manager_navigation:
+  ros__parameters:
+    bond_timeout: 60.0
+
+lifecycle_manager_localization:
+  ros__parameters:
+    bond_timeout: 60.0

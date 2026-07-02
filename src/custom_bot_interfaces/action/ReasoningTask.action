@@ -1,0 +1,9 @@
+# Request
+string command
+---
+# Result
+bool success
+string summary
+---
+# Feedback
+string current_stage
