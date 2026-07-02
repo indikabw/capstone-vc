@@ -5,6 +5,10 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from sensor_msgs.msg import Image
 from custom_bot_interfaces.action import ReasoningTask
 from nav2_msgs.action import NavigateToPose
+from moveit_msgs.action import MoveGroup
+from moveit_msgs.msg import Constraints, PositionConstraint, BoundingVolume
+from shape_msgs.msg import SolidPrimitive
+from geometry_msgs.msg import Pose, PoseStamped
 from cv_bridge import CvBridge
 import threading
 import time
@@ -58,6 +62,13 @@ class ReasoningNode(Node):
             callback_group=self.callback_group
         )
         
+        self._move_client = ActionClient(
+            self,
+            MoveGroup,
+            'move_action',
+            callback_group=self.callback_group
+        )
+        
         self.heartbeat_timer = self.create_timer(
             0.1,
             self.heartbeat_callback,
@@ -71,8 +82,8 @@ class ReasoningNode(Node):
             name="robot_agent",
             model="gemini-2.5-flash",
             instruction="""
-    You are an autonomous robot assistant controlling a TurtleBot4 (radius 0.35m).
-    You must execute spatial reasoning to find objects and navigate to them.
+    You are an autonomous robot assistant controlling a TurtleBot4 (radius 0.35m) with an OpenManipulator-X arm.
+    You must execute spatial reasoning to find objects, navigate to them, and manipulate them.
     
     CRITICAL INSTRUCTIONS:
     1. Use `list_objects_tool` to see all available objects in the environment. Look for keywords matching the user's request.
@@ -81,8 +92,10 @@ class ReasoningNode(Node):
     4. Before navigating, you MUST pick an empty coordinate to stand in. Do NOT just blindly add an offset to a target object, or use the exact room center if it is occupied.
     5. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination is empty. Ensure no objects are within a 0.5m radius. Pass exactly 0.5 as the radius. If there are objects, pick another coordinate by perturbing the point. If you cannot find a safe coordinate after 3 attempts, you must return a final textual response explaining why the navigation is impossible.
     6. Finally, use `navigate_and_face_tool` providing your safe (robot_x, robot_y) coordinate AND the target object's (face_x, face_y) coordinate (or the room center if looking at the center of the room). The system will automatically calculate the angle so you look at the target.
+    7. Use `pick_tool(object_id)` to pick up an object. You must be navigated near it and facing it first.
+    8. Use `place_tool(x, y, z)` to place an object at a target 3D coordinate.
     """,
-            tools=[self.list_objects_tool, self.get_object_details_tool, self.get_nearby_objects_tool, self.navigate_and_face_tool],
+            tools=[self.list_objects_tool, self.get_object_details_tool, self.get_nearby_objects_tool, self.navigate_and_face_tool, self.pick_tool, self.place_tool],
         )
         try:
             from google.adk.runners import InMemoryRunner
@@ -189,6 +202,115 @@ class ReasoningNode(Node):
             return f"Navigation failed. The planner may have found the path blocked or the coordinate is inside an obstacle. Pick a DIFFERENT empty coordinate and try again."
             
         return "Navigation succeeded. Reached destination and facing target."
+
+    def pick_tool(self, object_id: str) -> str:
+        """Dispatches a MoveIt2 goal to pick up the specified object."""
+        self.get_logger().info(f'Tool called: pick_tool({object_id})')
+        
+        if object_id not in self.sem_map:
+            return f"Error: Object {object_id} not found in semantic map."
+            
+        obj_pos = self.sem_map[object_id]["position"]
+        
+        if not self._move_client.wait_for_server(timeout_sec=2.0):
+            return "Failed to connect to MoveIt2 action server."
+            
+        goal_msg = MoveGroup.Goal()
+        goal_msg.request.group_name = 'arm'
+        goal_msg.request.num_planning_attempts = 10
+        goal_msg.request.allowed_planning_time = 5.0
+        
+        p_const = PositionConstraint()
+        p_const.header.frame_id = "map"
+        p_const.link_name = "omx_end_effector_link"
+        bv = BoundingVolume()
+        sp = SolidPrimitive()
+        sp.type = SolidPrimitive.SPHERE
+        sp.dimensions = [0.1]
+        bv.primitives.append(sp)
+        
+        pose = Pose()
+        pose.position.x = float(obj_pos["x"])
+        pose.position.y = float(obj_pos["y"])
+        pose.position.z = float(obj_pos.get("z", 0.5))
+        bv.primitive_poses.append(pose)
+        
+        p_const.constraint_region = bv
+        p_const.weight = 1.0
+        
+        c = Constraints()
+        c.position_constraints.append(p_const)
+        goal_msg.request.goal_constraints.append(c)
+        
+        future = self._move_client.send_goal_async(goal_msg)
+        while not future.done():
+            time.sleep(0.1)
+            
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            return "MoveIt2 goal rejected."
+            
+        result_future = goal_handle.get_result_async()
+        while not result_future.done():
+            time.sleep(0.1)
+            
+        res = result_future.result()
+        if res.result.error_code.val != 1:
+            return f"Picking failed with MoveIt error code: {res.result.error_code.val}"
+            
+        return f"Successfully picked up {object_id}."
+
+    def place_tool(self, x: float, y: float, z: float) -> str:
+        """Dispatches a MoveIt2 goal to place an object at (x, y, z)."""
+        self.get_logger().info(f'Tool called: place_tool({x}, {y}, {z})')
+        
+        if not self._move_client.wait_for_server(timeout_sec=2.0):
+            return "Failed to connect to MoveIt2 action server."
+            
+        goal_msg = MoveGroup.Goal()
+        goal_msg.request.group_name = 'arm'
+        goal_msg.request.num_planning_attempts = 10
+        goal_msg.request.allowed_planning_time = 5.0
+        
+        p_const = PositionConstraint()
+        p_const.header.frame_id = "map"
+        p_const.link_name = "omx_end_effector_link"
+        bv = BoundingVolume()
+        sp = SolidPrimitive()
+        sp.type = SolidPrimitive.SPHERE
+        sp.dimensions = [0.1]
+        bv.primitives.append(sp)
+        
+        pose = Pose()
+        pose.position.x = float(x)
+        pose.position.y = float(y)
+        pose.position.z = float(z)
+        bv.primitive_poses.append(pose)
+        
+        p_const.constraint_region = bv
+        p_const.weight = 1.0
+        
+        c = Constraints()
+        c.position_constraints.append(p_const)
+        goal_msg.request.goal_constraints.append(c)
+        
+        future = self._move_client.send_goal_async(goal_msg)
+        while not future.done():
+            time.sleep(0.1)
+            
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            return "MoveIt2 goal rejected."
+            
+        result_future = goal_handle.get_result_async()
+        while not result_future.done():
+            time.sleep(0.1)
+            
+        res = result_future.result()
+        if res.result.error_code.val != 1:
+            return f"Placement failed with MoveIt error code: {res.result.error_code.val}"
+            
+        return f"Successfully placed object at ({x}, {y}, {z})."
 
     def execute_callback(self, goal_handle):
         self.get_logger().info(f'Received reasoning goal: "{goal_handle.request.command}"')

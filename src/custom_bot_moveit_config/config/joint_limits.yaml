@@ -1,0 +1,31 @@
+joint_limits:
+  omx_joint1:
+    has_velocity_limits: true
+    max_velocity: 4.8
+    has_acceleration_limits: true
+    max_acceleration: 1.5
+  omx_joint2:
+    has_velocity_limits: true
+    max_velocity: 4.8
+    has_acceleration_limits: true
+    max_acceleration: 1.5
+  omx_joint3:
+    has_velocity_limits: true
+    max_velocity: 4.8
+    has_acceleration_limits: true
+    max_acceleration: 1.5
+  omx_joint4:
+    has_velocity_limits: true
+    max_velocity: 4.8
+    has_acceleration_limits: true
+    max_acceleration: 1.5
+  omx_gripper_left_joint:
+    has_velocity_limits: true
+    max_velocity: 4.8
+    has_acceleration_limits: true
+    max_acceleration: 1.5
+  omx_gripper_right_joint:
+    has_velocity_limits: true
+    max_velocity: 4.8
+    has_acceleration_limits: true
+    max_acceleration: 1.5

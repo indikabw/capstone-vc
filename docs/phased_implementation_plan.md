@@ -51,15 +51,15 @@ This document outlines a phased implementation approach for the TurtleBot4 + Ope
   - Prompt engineer the ADK 2.0 model to handle basic commands like "find and navigate to the kitchen" or "move close to the red mug".
   - Parse the LLM's structured output into a `NavigateToPose` goal and dispatch it to the Nav2 Action Server.
 
-### Phase 3: Complex Agentic Reasoning (Manipulation)
+### Phase 4: Complex Agentic Reasoning (Manipulation)
 
 **Goal:** Extend the agent's capabilities to perform multi-step tasks involving both navigation and manipulation.
 
-- **Phase 3.1: MoveIt2 Integration**
+- **Phase 4.1: MoveIt2 Integration**
   - Use MoveIt Setup Assistant to generate the `custom_bot_moveit_config` based on the unified URDF.
   - Validate Inverse Kinematics and Trajectory Planning for the OpenManipulator-X within ROS2/Gazebo.
 
-- **Phase 3.2: Multi-Step Reasoning & Dispatch**
+- **Phase 4.2: Multi-Step Reasoning & Dispatch**
   - Expand the ADK 2.0 system prompt to include manipulation capabilities (`pick`, `place`, `move_arm_to`).
   - Update the reasoning node to parse manipulation actions and dispatch them to the MoveIt2 Action Server.
   - Handle complex tasks (e.g., "Move the mug on the coffee table to the kitchen") by orchestrating a sequence: Navigate -> Detect -> Pick -> Navigate -> Place.
@@ -72,4 +72,4 @@ This document outlines a phased implementation approach for the TurtleBot4 + Ope
 ### Manual Verification
 - **Phase 1:** Launch Gazebo, manually set a 2D Nav Goal in RViz, and observe the robot navigating.
 - **Phase 2:** Launch Gazebo and the Reasoning Node. Send a command via ROS2 CLI (e.g., `ros2 action send_goal /reasoning_task ... "Navigate to the red cube"`) and observe behavior.
-- **Phase 3:** Send a complex manipulation command via the Action CLI and observe the complete pick-and-place operation in Gazebo.
+- **Phase 4:** Send a complex manipulation command via the Action CLI and observe the complete pick-and-place operation in Gazebo.

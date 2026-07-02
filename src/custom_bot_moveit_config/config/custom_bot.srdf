@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<robot name="custom_bot">
+    <group name="arm">
+        <joint name="omx_joint1"/>
+        <joint name="omx_joint2"/>
+        <joint name="omx_joint3"/>
+        <joint name="omx_joint4"/>
+        <joint name="omx_end_effector_joint"/>
+    </group>
+    <group name="gripper">
+        <joint name="omx_gripper_left_joint"/>
+        <joint name="omx_gripper_right_joint"/>
+    </group>
+    
+    <group_state name="init" group="arm">
+        <joint name="omx_joint1" value="0"/>
+        <joint name="omx_joint2" value="0"/>
+        <joint name="omx_joint3" value="0"/>
+        <joint name="omx_joint4" value="0"/>
+    </group_state>
+    <group_state name="home" group="arm">
+        <joint name="omx_joint1" value="0"/>
+        <joint name="omx_joint2" value="-1"/>
+        <joint name="omx_joint3" value="0.7"/>
+        <joint name="omx_joint4" value="0.3"/>
+    </group_state>
+    
+    <end_effector name="omx_end_effector" parent_link="omx_end_effector_link" group="gripper" parent_group="arm"/>
+    
+    <disable_collisions link1="omx_gripper_left_link" link2="omx_gripper_right_link" reason="Never"/>
+    <disable_collisions link1="omx_gripper_left_link" link2="omx_link4" reason="Never"/>
+    <disable_collisions link1="omx_gripper_left_link" link2="omx_link5" reason="Adjacent"/>
+    <disable_collisions link1="omx_gripper_right_link" link2="omx_link4" reason="Never"/>
+    <disable_collisions link1="omx_gripper_right_link" link2="omx_link5" reason="Adjacent"/>
+    <disable_collisions link1="omx_link1" link2="omx_link2" reason="Adjacent"/>
+    <disable_collisions link1="omx_link1" link2="omx_link3" reason="Never"/>
+    <disable_collisions link1="omx_link2" link2="omx_link3" reason="Adjacent"/>
+    <disable_collisions link1="omx_link3" link2="omx_link4" reason="Adjacent"/>
+    <disable_collisions link1="omx_link4" link2="omx_link5" reason="Adjacent"/>
+    
+    <!-- Disable collision with the TurtleBot4 base -->
+    <disable_collisions link1="omx_link1" link2="base_link" reason="Never"/>
+    <disable_collisions link1="omx_link1" link2="tower_sensor_plate" reason="Adjacent"/>
+    <disable_collisions link1="omx_link2" link2="tower_sensor_plate" reason="Never"/>
+    <disable_collisions link1="omx_link1" link2="chassis_link" reason="Never"/>
+</robot>
