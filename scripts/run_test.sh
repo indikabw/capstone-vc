@@ -3,6 +3,7 @@ set -e
 
 if [ -f ".env" ]; then
     echo "Sourcing .env file..."
+    source .env
     export $(grep -v '^#' .env | xargs)
 fi
 
@@ -11,6 +12,7 @@ pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_
 sleep 2
 
 source /opt/ros/lyrical/setup.bash
+source ~/moveit_ws/install/setup.bash
 source ~/capstone-vc/install/setup.bash
 
 export LIBGL_ALWAYS_SOFTWARE=1
@@ -52,6 +54,9 @@ echo "Starting reasoning node..."
 nohup ros2 run custom_bot_reasoning reasoning_node > /tmp/reasoning.log 2>&1 &
 REASONING_PID=$!
 
+# Wait for MoveIt2 move_action to come online
+until ros2 action list | grep -q "/move_action"; do sleep 1; done
+echo "MoveIt2 action server online."
 echo "Waiting for reasoning action server..."
 until ros2 action list | grep -q "/reasoning_task"; do
     sleep 1

@@ -12,6 +12,8 @@
   <depend>nav2_msgs</depend>
   <depend>control_msgs</depend>
   <depend>trajectory_msgs</depend>
+  <depend>geometry_msgs</depend>
+  <depend>moveit_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
   <depend>custom_bot_interfaces</depend>

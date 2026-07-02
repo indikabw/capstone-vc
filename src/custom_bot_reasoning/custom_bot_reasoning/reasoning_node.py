@@ -5,9 +5,8 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from sensor_msgs.msg import Image
 from custom_bot_interfaces.action import ReasoningTask
 from nav2_msgs.action import NavigateToPose
-from control_msgs.action import FollowJointTrajectory
-from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
-from builtin_interfaces.msg import Duration
+from moveit_msgs.action import MoveGroup
+from moveit_msgs.msg import MotionPlanRequest, Constraints, JointConstraint
 from cv_bridge import CvBridge
 import threading
 import time
@@ -61,16 +60,10 @@ class ReasoningNode(Node):
             callback_group=self.callback_group
         )
         
-        self._arm_client = ActionClient(
+        self._moveit_client = ActionClient(
             self,
-            FollowJointTrajectory,
-            '/arm_controller/follow_joint_trajectory',
-            callback_group=self.callback_group
-        )
-        self._gripper_client = ActionClient(
-            self,
-            FollowJointTrajectory,
-            '/gripper_controller/follow_joint_trajectory',
+            MoveGroup,
+            'move_action',
             callback_group=self.callback_group
         )
         
@@ -208,34 +201,44 @@ class ReasoningNode(Node):
             
         return "Navigation succeeded. Reached destination and facing target."
 
-    def execute_trajectory(self, client, joint_names, positions, time_sec=2.0):
-        if not client.wait_for_server(timeout_sec=2.0):
-            return False, "Failed to connect to trajectory action server."
+    def execute_moveit_joints(self, group_name, joint_names, positions):
+        if not self._moveit_client.wait_for_server(timeout_sec=2.0):
+            return False, "Failed to connect to MoveIt2 action server."
 
-        goal_msg = FollowJointTrajectory.Goal()
-        goal_msg.trajectory = JointTrajectory()
-        goal_msg.trajectory.joint_names = joint_names
+        goal_msg = MoveGroup.Goal()
+        req = MotionPlanRequest()
+        req.group_name = group_name
+        req.num_planning_attempts = 3
+        req.allowed_planning_time = 5.0
+        
+        c = Constraints()
+        for j, t in zip(joint_names, positions):
+            jc = JointConstraint()
+            jc.joint_name = j
+            jc.position = t
+            jc.tolerance_above = 0.05
+            jc.tolerance_below = 0.05
+            jc.weight = 1.0
+            c.joint_constraints.append(jc)
+            
+        req.goal_constraints.append(c)
+        goal_msg.request = req
 
-        point = JointTrajectoryPoint()
-        point.positions = positions
-        point.time_from_start = Duration(sec=int(time_sec), nanosec=int((time_sec % 1) * 1e9))
-        goal_msg.trajectory.points.append(point)
-
-        future = client.send_goal_async(goal_msg)
+        future = self._moveit_client.send_goal_async(goal_msg)
         while not future.done():
             time.sleep(0.1)
 
         goal_handle = future.result()
         if not goal_handle.accepted:
-            return False, "Trajectory goal rejected."
+            return False, "MoveIt2 goal rejected."
 
         result_future = goal_handle.get_result_async()
         while not result_future.done():
             time.sleep(0.1)
 
-        res = result_future.result()
-        if res.result.error_code != 0:
-            return False, f"Trajectory failed with error code: {res.result.error_code}"
+        res = result_future.result().result
+        if res.error_code.val != 1:
+            return False, f"MoveIt2 failed with error code: {res.error_code.val}"
             
         return True, "Success"
 
@@ -247,20 +250,20 @@ class ReasoningNode(Node):
         gripper_joints = ['omx_gripper_left_joint']
         
         # 1. Open gripper
-        self.execute_trajectory(self._gripper_client, gripper_joints, [0.010], 1.0)
+        self.execute_moveit_joints('gripper', gripper_joints, [0.010])
         time.sleep(1.0)
         
-        # 2. Reach forward
-        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, 0.5, 0.5, -1.0], 2.0)
+        # 2. Move up into camera frame (Wave)
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
         if not ok: return msg
         time.sleep(2.0)
         
         # 3. Close gripper
-        self.execute_trajectory(self._gripper_client, gripper_joints, [-0.010], 1.0)
+        self.execute_moveit_joints('gripper', gripper_joints, [-0.010])
         time.sleep(1.0)
         
         # 4. Retreat (Home)
-        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, -1.0, 0.3, 0.7], 2.0)
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
         if not ok: return msg
         time.sleep(2.0)
             
@@ -274,16 +277,16 @@ class ReasoningNode(Node):
         gripper_joints = ['omx_gripper_left_joint']
         
         # 1. Reach forward
-        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, 0.5, 0.5, -1.0], 2.0)
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, 0.5, 0.5, -1.0])
         if not ok: return msg
         time.sleep(2.0)
         
         # 2. Open gripper
-        self.execute_trajectory(self._gripper_client, gripper_joints, [0.010], 1.0)
+        self.execute_moveit_joints('gripper', gripper_joints, [0.010])
         time.sleep(1.0)
         
         # 3. Retreat (Home)
-        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, -1.0, 0.3, 0.7], 2.0)
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
         if not ok: return msg
         time.sleep(2.0)
             
