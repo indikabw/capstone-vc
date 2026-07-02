@@ -1,7 +1,8 @@
 import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import ExecuteProcess
+from launch.actions import ExecuteProcess, IncludeLaunchDescription
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
 def generate_launch_description():
@@ -25,15 +26,16 @@ def generate_launch_description():
         output='screen'
     )
 
-    # MoveIt MoveGroup node
-    # Since we are not using the full setup assistant, we might just load move_group with minimal params
-    # We will need the URDF and SRDF on the parameter server, which is usually handled by MoveGroup
-    # For now, we assume the user will launch MoveIt after sim.
-    # Note: Full MoveGroup configuration requires loading kinematics, limits, and controllers into the node's parameters.
-    # Here we outline the basic MoveGroup node execution.
-    
+    # Include move_group launch
+    move_group_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_custom_bot_moveit_config, 'launch', 'move_group.launch.py')
+        )
+    )
+
     return LaunchDescription([
         spawn_jsb,
         spawn_arm_controller,
-        spawn_gripper_controller
+        spawn_gripper_controller,
+        move_group_launch
     ])
