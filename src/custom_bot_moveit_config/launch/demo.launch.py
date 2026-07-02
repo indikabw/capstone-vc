@@ -9,13 +9,13 @@ def generate_launch_description():
     
     # Spawn the arm_controller
     spawn_arm_controller = ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active', 'arm_controller'],
+        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active', 'arm_controller', os.path.join(get_package_share_directory('custom_bot_description'), 'config', 'ros2_controllers.yaml')],
         output='screen'
     )
     
     # Spawn the gripper_controller
     spawn_gripper_controller = ExecuteProcess(
-        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active', 'gripper_controller'],
+        cmd=['ros2', 'control', 'load_controller', '--set-state', 'active', 'gripper_controller', os.path.join(get_package_share_directory('custom_bot_description'), 'config', 'ros2_controllers.yaml')],
         output='screen'
     )
 
@@ -32,26 +32,8 @@ def generate_launch_description():
     # Note: Full MoveGroup configuration requires loading kinematics, limits, and controllers into the node's parameters.
     # Here we outline the basic MoveGroup node execution.
     
-    # Load SRDF
-    with open(os.path.join(pkg_custom_bot_moveit_config, 'config', 'custom_bot.srdf'), 'r') as f:
-        robot_description_semantic = f.read()
-
-    move_group_node = Node(
-        package='moveit_ros_move_group',
-        executable='move_group',
-        output='screen',
-        parameters=[
-            {'robot_description_semantic': robot_description_semantic},
-            {'use_sim_time': True},
-            os.path.join(pkg_custom_bot_moveit_config, 'config', 'kinematics.yaml'),
-            os.path.join(pkg_custom_bot_moveit_config, 'config', 'joint_limits.yaml'),
-            os.path.join(pkg_custom_bot_moveit_config, 'config', 'moveit_controllers.yaml'),
-        ],
-    )
-
     return LaunchDescription([
         spawn_jsb,
         spawn_arm_controller,
-        spawn_gripper_controller,
-        move_group_node
+        spawn_gripper_controller
     ])

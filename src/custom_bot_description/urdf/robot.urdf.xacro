@@ -61,11 +61,18 @@
       <state_interface name="velocity"/>
     </joint>
     <joint name="omx_gripper_right_joint">
-      <command_interface name="position"/>
-      <command_interface name="velocity"/>
+      <param name="mimic">omx_gripper_left_joint</param>
+      <param name="multiplier">1</param>
       <state_interface name="position"/>
       <state_interface name="velocity"/>
     </joint>
   </ros2_control>
+
+  <!-- Gazebo plugin to load ros2_control -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find custom_bot_description)/config/ros2_controllers.yaml</parameters>
+    </plugin>
+  </gazebo>
 
 </robot>

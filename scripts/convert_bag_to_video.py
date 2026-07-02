@@ -8,7 +8,7 @@ import os
 
 def main():
     if len(sys.argv) < 3:
-        print("Usage: python3 convert.py <bag_dir> <output.mp4>")
+        print("Usage: python3 convert.py <bag_dir> <output.mp4> [topic]")
         sys.exit(1)
 
     bag_dir = sys.argv[1]
@@ -26,7 +26,7 @@ def main():
     topic_types = reader.get_all_topics_and_types()
     type_map = {topic.name: topic.type for topic in topic_types}
     
-    image_topic = '/camera/image_raw'
+    image_topic = sys.argv[3] if len(sys.argv) > 3 else '/camera/image_raw'
     if image_topic not in type_map:
         print(f"Topic {image_topic} not found in bag. Available topics: {list(type_map.keys())}")
         sys.exit(1)

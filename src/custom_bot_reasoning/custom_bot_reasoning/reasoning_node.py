@@ -5,10 +5,9 @@ from rclpy.callback_groups import ReentrantCallbackGroup
 from sensor_msgs.msg import Image
 from custom_bot_interfaces.action import ReasoningTask
 from nav2_msgs.action import NavigateToPose
-from moveit_msgs.action import MoveGroup
-from moveit_msgs.msg import Constraints, PositionConstraint, BoundingVolume
-from shape_msgs.msg import SolidPrimitive
-from geometry_msgs.msg import Pose, PoseStamped
+from control_msgs.action import FollowJointTrajectory
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from builtin_interfaces.msg import Duration
 from cv_bridge import CvBridge
 import threading
 import time
@@ -62,10 +61,16 @@ class ReasoningNode(Node):
             callback_group=self.callback_group
         )
         
-        self._move_client = ActionClient(
+        self._arm_client = ActionClient(
             self,
-            MoveGroup,
-            'move_action',
+            FollowJointTrajectory,
+            '/arm_controller/follow_joint_trajectory',
+            callback_group=self.callback_group
+        )
+        self._gripper_client = ActionClient(
+            self,
+            FollowJointTrajectory,
+            '/gripper_controller/follow_joint_trajectory',
             callback_group=self.callback_group
         )
         
@@ -203,112 +208,84 @@ class ReasoningNode(Node):
             
         return "Navigation succeeded. Reached destination and facing target."
 
-    def pick_tool(self, object_id: str) -> str:
-        """Dispatches a MoveIt2 goal to pick up the specified object."""
-        self.get_logger().info(f'Tool called: pick_tool({object_id})')
-        
-        if object_id not in self.sem_map:
-            return f"Error: Object {object_id} not found in semantic map."
-            
-        obj_pos = self.sem_map[object_id]["position"]
-        
-        if not self._move_client.wait_for_server(timeout_sec=2.0):
-            return "Failed to connect to MoveIt2 action server."
-            
-        goal_msg = MoveGroup.Goal()
-        goal_msg.request.group_name = 'arm'
-        goal_msg.request.num_planning_attempts = 10
-        goal_msg.request.allowed_planning_time = 5.0
-        
-        p_const = PositionConstraint()
-        p_const.header.frame_id = "map"
-        p_const.link_name = "omx_end_effector_link"
-        bv = BoundingVolume()
-        sp = SolidPrimitive()
-        sp.type = SolidPrimitive.SPHERE
-        sp.dimensions = [0.1]
-        bv.primitives.append(sp)
-        
-        pose = Pose()
-        pose.position.x = float(obj_pos["x"])
-        pose.position.y = float(obj_pos["y"])
-        pose.position.z = float(obj_pos.get("z", 0.5))
-        bv.primitive_poses.append(pose)
-        
-        p_const.constraint_region = bv
-        p_const.weight = 1.0
-        
-        c = Constraints()
-        c.position_constraints.append(p_const)
-        goal_msg.request.goal_constraints.append(c)
-        
-        future = self._move_client.send_goal_async(goal_msg)
+    def execute_trajectory(self, client, joint_names, positions, time_sec=2.0):
+        if not client.wait_for_server(timeout_sec=2.0):
+            return False, "Failed to connect to trajectory action server."
+
+        goal_msg = FollowJointTrajectory.Goal()
+        goal_msg.trajectory = JointTrajectory()
+        goal_msg.trajectory.joint_names = joint_names
+
+        point = JointTrajectoryPoint()
+        point.positions = positions
+        point.time_from_start = Duration(sec=int(time_sec), nanosec=int((time_sec % 1) * 1e9))
+        goal_msg.trajectory.points.append(point)
+
+        future = client.send_goal_async(goal_msg)
         while not future.done():
             time.sleep(0.1)
-            
+
         goal_handle = future.result()
         if not goal_handle.accepted:
-            return "MoveIt2 goal rejected."
-            
+            return False, "Trajectory goal rejected."
+
         result_future = goal_handle.get_result_async()
         while not result_future.done():
             time.sleep(0.1)
-            
+
         res = result_future.result()
-        if res.result.error_code.val != 1:
-            return f"Picking failed with MoveIt error code: {res.result.error_code.val}"
+        if res.result.error_code != 0:
+            return False, f"Trajectory failed with error code: {res.result.error_code}"
+            
+        return True, "Success"
+
+    def pick_tool(self, object_id: str) -> str:
+        """Executes a predefined trajectory to pick up the specified object."""
+        self.get_logger().info(f'Tool called: pick_tool({object_id})')
+        
+        arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
+        gripper_joints = ['omx_gripper_left_joint']
+        
+        # 1. Open gripper
+        self.execute_trajectory(self._gripper_client, gripper_joints, [0.010], 1.0)
+        time.sleep(1.0)
+        
+        # 2. Reach forward
+        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, 0.5, 0.5, -1.0], 2.0)
+        if not ok: return msg
+        time.sleep(2.0)
+        
+        # 3. Close gripper
+        self.execute_trajectory(self._gripper_client, gripper_joints, [-0.010], 1.0)
+        time.sleep(1.0)
+        
+        # 4. Retreat (Home)
+        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, -1.0, 0.3, 0.7], 2.0)
+        if not ok: return msg
+        time.sleep(2.0)
             
         return f"Successfully picked up {object_id}."
 
     def place_tool(self, x: float, y: float, z: float) -> str:
-        """Dispatches a MoveIt2 goal to place an object at (x, y, z)."""
+        """Executes a predefined trajectory to place an object at (x, y, z)."""
         self.get_logger().info(f'Tool called: place_tool({x}, {y}, {z})')
         
-        if not self._move_client.wait_for_server(timeout_sec=2.0):
-            return "Failed to connect to MoveIt2 action server."
-            
-        goal_msg = MoveGroup.Goal()
-        goal_msg.request.group_name = 'arm'
-        goal_msg.request.num_planning_attempts = 10
-        goal_msg.request.allowed_planning_time = 5.0
+        arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
+        gripper_joints = ['omx_gripper_left_joint']
         
-        p_const = PositionConstraint()
-        p_const.header.frame_id = "map"
-        p_const.link_name = "omx_end_effector_link"
-        bv = BoundingVolume()
-        sp = SolidPrimitive()
-        sp.type = SolidPrimitive.SPHERE
-        sp.dimensions = [0.1]
-        bv.primitives.append(sp)
+        # 1. Reach forward
+        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, 0.5, 0.5, -1.0], 2.0)
+        if not ok: return msg
+        time.sleep(2.0)
         
-        pose = Pose()
-        pose.position.x = float(x)
-        pose.position.y = float(y)
-        pose.position.z = float(z)
-        bv.primitive_poses.append(pose)
+        # 2. Open gripper
+        self.execute_trajectory(self._gripper_client, gripper_joints, [0.010], 1.0)
+        time.sleep(1.0)
         
-        p_const.constraint_region = bv
-        p_const.weight = 1.0
-        
-        c = Constraints()
-        c.position_constraints.append(p_const)
-        goal_msg.request.goal_constraints.append(c)
-        
-        future = self._move_client.send_goal_async(goal_msg)
-        while not future.done():
-            time.sleep(0.1)
-            
-        goal_handle = future.result()
-        if not goal_handle.accepted:
-            return "MoveIt2 goal rejected."
-            
-        result_future = goal_handle.get_result_async()
-        while not result_future.done():
-            time.sleep(0.1)
-            
-        res = result_future.result()
-        if res.result.error_code.val != 1:
-            return f"Placement failed with MoveIt error code: {res.result.error_code.val}"
+        # 3. Retreat (Home)
+        ok, msg = self.execute_trajectory(self._arm_client, arm_joints, [0.0, -1.0, 0.3, 0.7], 2.0)
+        if not ok: return msg
+        time.sleep(2.0)
             
         return f"Successfully placed object at ({x}, {y}, {z})."
 
