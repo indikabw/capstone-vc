@@ -1,6 +1,15 @@
 #!/bin/bash
 set -e
 
+if [ -f ".env" ]; then
+    echo "Sourcing .env file..."
+    export $(grep -v '^#' .env | xargs)
+fi
+
+if [ -z "$GEMINI_API_KEY" ]; then
+    echo "ERROR: GEMINI_API_KEY is not set. Please add it to .env or export it."
+    exit 1
+fi
 # Make sure old processes are dead
 pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher' || true
 sleep 2
@@ -58,7 +67,7 @@ sleep 2
 
 # 5. Send action goal to go to the TV cabinet
 echo "Sending navigation command to reasoning node..."
-ros2 action send_goal /reasoning_task custom_bot_interfaces/action/ReasoningTask "{command: 'go near the TV cabinet'}"
+ros2 action send_goal /reasoning_task custom_bot_interfaces/action/ReasoningTask "{command: 'go to the TV cabinet'}"
 
 echo "Command finished! Stopping recording..."
 sleep 2
