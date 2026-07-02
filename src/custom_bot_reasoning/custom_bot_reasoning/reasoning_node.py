@@ -10,20 +10,24 @@ import threading
 import time
 import math
 import os
+import sys
 import json
+import asyncio
 
 try:
     from google.adk.agents import Agent
 except ImportError:
-    Agent = None
+    print("FATAL: google.adk.agents is not installed.")
+    sys.exit(1)
 
 if 'GEMINI_API_KEY' not in os.environ:
-    Agent = None
+    print("FATAL: GEMINI_API_KEY environment variable is not set.")
+    sys.exit(1)
 
 class ReasoningNode(Node):
     def __init__(self):
         super().__init__('reasoning_node')
-        self.get_logger().info('Initializing Reasoning Node...')
+        self.get_logger().info('Initializing ADK 2.0 Reasoning Node...')
         
         self.bridge = CvBridge()
         self.latest_image = None
@@ -60,25 +64,48 @@ class ReasoningNode(Node):
             callback_group=self.callback_group
         )
         
-        if Agent is not None:
-            self.agent = Agent(
-                name="robot_agent",
-                model="gemini-1.5-flash",
-                instruction="""
-        You are an autonomous robot assistant. You can see the environment and move to specific coordinates.
-        Use the get_semantic_map tool to find the layout of the environment and the objects in it. You can reason about which room an object is in based on the layout of other objects.
+        # Load semantic map once
+        self.sem_map = self.load_semantic_map()
         
-        When determining a coordinate to move to, make sure the destination is open enough. The TurtleBot4 has a radius of approximately 0.35m.
-        Use the target object's position and orientation to calculate a safe offset (e.g., 0.5m to 1.0m away) so the robot does not collide with the object.
-        
-        Analyze the user command and use the navigate_to_pose tool to move to the appropriate location.
-        """,
-                tools=[self.navigate_to_pose_tool, self.get_semantic_map_tool],
-            )
-        else:
-            self.agent = None
-            self.get_logger().warning('google.adk.agents not available, running in mock mode.')
-        
+        self.agent = Agent(
+            name="robot_agent",
+            model="gemini-2.5-flash",
+            instruction="""
+    You are an autonomous robot assistant controlling a TurtleBot4 (radius 0.35m).
+    You must execute spatial reasoning to find objects and navigate to them.
+    
+    CRITICAL INSTRUCTIONS:
+    1. Use `list_objects_tool` to see all available objects in the environment. Look for keywords matching the user's request.
+    2. Use `get_object_details_tool` to find the exact (x, y, yaw) of the target object.
+    3. Before navigating, you MUST pick an empty coordinate to stand in. Do NOT just blindly add an offset to the target. 
+    4. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination is empty. Ensure no objects are within at least 0.5m of your chosen coordinate. If there are, pick another coordinate.
+    5. Finally, use `navigate_and_face_tool` providing your safe (robot_x, robot_y) coordinate AND the target object's (face_x, face_y) coordinate. The system will automatically calculate the angle so you look at the object.
+    """,
+            tools=[self.list_objects_tool, self.get_object_details_tool, self.get_nearby_objects_tool, self.navigate_and_face_tool],
+        )
+        try:
+            from google.adk.runners import InMemoryRunner
+            self.runner = InMemoryRunner(agent=self.agent, app_name="custom_bot")
+        except ImportError:
+            self.runner = None
+            self.get_logger().error("Could not import InMemoryRunner from google.adk.runners")
+
+    def load_semantic_map(self):
+        try:
+            from ament_index_python.packages import get_package_share_directory
+            pkg_share = get_package_share_directory('custom_bot_reasoning')
+            map_path = os.path.join(pkg_share, 'resource', 'semantic_map.json')
+        except Exception:
+            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            map_path = os.path.join(base_dir, 'resource', 'semantic_map.json')
+            
+        if not os.path.exists(map_path):
+            self.get_logger().error(f"semantic_map.json not found at {map_path}")
+            return {}
+            
+        with open(map_path, 'r') as f:
+            return json.load(f)
+
     def heartbeat_callback(self):
         pass
         
@@ -89,33 +116,46 @@ class ReasoningNode(Node):
             except Exception as e:
                 self.get_logger().error(f'Failed to convert image: {e}')
 
-    def get_semantic_map_tool(self) -> str:
-        """Returns a JSON string containing the semantic map of the environment, including object positions and orientations."""
-        self.get_logger().info('Tool called: get_semantic_map()')
-        
-        try:
-            from ament_index_python.packages import get_package_share_directory
-            pkg_share = get_package_share_directory('custom_bot_reasoning')
-            map_path = os.path.join(pkg_share, 'resource', 'semantic_map.json')
-        except Exception:
-            base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-            map_path = os.path.join(base_dir, 'resource', 'semantic_map.json')
-            
-        if not os.path.exists(map_path):
-            return '{"error": "semantic_map.json not found"}'
-            
-        with open(map_path, 'r') as f:
-            return f.read()
+    def list_objects_tool(self) -> str:
+        """Returns a list of all object IDs present in the environment."""
+        self.get_logger().info('Tool called: list_objects_tool()')
+        return json.dumps(list(self.sem_map.keys()))
 
-    def navigate_to_pose_tool(self, x: float, y: float, theta: float) -> str:
-        """Move the robot to the specified 2D coordinate on the map.
+    def get_object_details_tool(self, object_id: str) -> str:
+        """Returns the specific position (x, y) and orientation (yaw) of the requested object ID."""
+        self.get_logger().info(f'Tool called: get_object_details_tool({object_id})')
+        if object_id in self.sem_map:
+            return json.dumps(self.sem_map[object_id])
+        return f'{{"error": "Object {object_id} not found."}}'
+
+    def get_nearby_objects_tool(self, x: float, y: float, radius: float) -> str:
+        """Returns a list of objects and their coordinates that are within 'radius' meters of the point (x, y). Use this to check for collisions."""
+        self.get_logger().info(f'Tool called: get_nearby_objects_tool({x}, {y}, {radius})')
+        nearby = {}
+        for obj_id, details in self.sem_map.items():
+            ox = details["position"]["x"]
+            oy = details["position"]["y"]
+            dist = math.sqrt((ox - x)**2 + (oy - y)**2)
+            if dist <= radius:
+                nearby[obj_id] = {"distance": dist, "position": details["position"]}
+        
+        if not nearby:
+            return "No objects found within the radius. Coordinate is open."
+        return json.dumps(nearby)
+
+    def navigate_and_face_tool(self, robot_x: float, robot_y: float, face_x: float, face_y: float) -> str:
+        """Move the robot to (robot_x, robot_y) and automatically turn to face (face_x, face_y).
         
         Args:
-            x: X coordinate in meters.
-            y: Y coordinate in meters.
-            theta: Yaw angle in radians.
+            robot_x: The X coordinate for the robot to stand at.
+            robot_y: The Y coordinate for the robot to stand at.
+            face_x: The X coordinate of the object the robot should look at.
+            face_y: The Y coordinate of the object the robot should look at.
         """
-        self.get_logger().info(f'Tool called: navigate_to_pose(x={x}, y={y}, theta={theta})')
+        self.get_logger().info(f'Tool called: navigate_and_face_tool(robot: {robot_x},{robot_y}, face: {face_x},{face_y})')
+        
+        # Calculate yaw to face target
+        theta = math.atan2(face_y - robot_y, face_x - robot_x)
         
         if not self._nav_client.wait_for_server(timeout_sec=2.0):
             return "Failed to connect to Nav2 action server."
@@ -123,8 +163,8 @@ class ReasoningNode(Node):
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = 'map'
         goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
-        goal_msg.pose.pose.position.x = float(x)
-        goal_msg.pose.pose.position.y = float(y)
+        goal_msg.pose.pose.position.x = float(robot_x)
+        goal_msg.pose.pose.position.y = float(robot_y)
         goal_msg.pose.pose.position.z = 0.0
         
         goal_msg.pose.pose.orientation.z = math.sin(theta / 2.0)
@@ -136,13 +176,13 @@ class ReasoningNode(Node):
             
         goal_handle = future.result()
         if not goal_handle.accepted:
-            return "Nav2 goal was rejected."
+            return "Nav2 goal was rejected. You may have chosen a coordinate inside an obstacle."
             
         result_future = goal_handle.get_result_async()
         while not result_future.done():
             time.sleep(0.1)
             
-        return "Navigation succeeded."
+        return "Navigation succeeded. Reached destination and facing target."
 
     def execute_callback(self, goal_handle):
         self.get_logger().info(f'Received reasoning goal: "{goal_handle.request.command}"')
@@ -163,75 +203,34 @@ class ReasoningNode(Node):
         goal_handle.publish_feedback(feedback_msg)
         
         summary = ""
-        if self.agent is not None:
-            try:
-                response = self.agent(goal_handle.request.command)
-                summary = str(response)
-            except Exception as e:
-                self.get_logger().error(f"ADK Agent failed: {e}")
-                summary = f"Reasoning failed: {e}"
-        else:
-            self.get_logger().info('Mocking ADK reasoning loop using semantic map.')
-            cmd = goal_handle.request.command.lower()
-            
-            import json
-            try:
-                from ament_index_python.packages import get_package_share_directory
-                pkg_share = get_package_share_directory('custom_bot_reasoning')
-                map_path = os.path.join(pkg_share, 'resource', 'semantic_map.json')
-            except Exception:
-                base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-                map_path = os.path.join(base_dir, 'resource', 'semantic_map.json')
-                
-            matched_obj = None
-            best_match = None
-            if os.path.exists(map_path):
-                with open(map_path, 'r') as f:
-                    sem_map = json.load(f)
-                
-                # Check for direct keyword matches
-                cmd_clean = cmd.replace(" ", "").replace("_", "")
-                for obj_name in sem_map.keys():
-                    clean_name = obj_name.split('_')[0].lower()
-                    if clean_name in cmd_clean:
-                        best_match = obj_name
-                        break
-                
-                # Handlers for generic room names
-                if not best_match:
-                    if "bedroom" in cmd:
-                        best_match = "Bed_01_001"
-                    elif "kitchen" in cmd:
-                        best_match = "KitchenTable_01_001"
-                    elif "living" in cmd or "sofa" in cmd:
-                        best_match = "SofaC_01_001"
-                
-                if best_match:
-                    matched_obj = sem_map[best_match]
-                    self.get_logger().info(f"Mock matched command '{cmd}' to object '{best_match}'")
-            
-            if matched_obj:
-                x = matched_obj["position"]["x"]
-                y = matched_obj["position"]["y"]
-                yaw = matched_obj["orientation"]["yaw"]
-                
-                # Offset: move 1.0m in the direction of the object's orientation
-                # and face the object
-                offset_dist = 1.0
-                dest_x = x + offset_dist * math.cos(yaw)
-                dest_y = y + offset_dist * math.sin(yaw)
-                dest_theta = yaw + math.pi
-                if dest_theta > math.pi:
-                    dest_theta -= 2 * math.pi
-                elif dest_theta < -math.pi:
-                    dest_theta += 2 * math.pi
-                    
-                self.get_logger().info(f"Calculated target: x={dest_x:.2f}, y={dest_y:.2f}, theta={dest_theta:.2f}")
-                self.navigate_to_pose_tool(dest_x, dest_y, dest_theta)
-                summary = f"Mock reasoning successfully routed to {best_match}."
-            else:
-                self.get_logger().warn(f"Mock reasoning could not find match for command '{cmd}'")
-                summary = "Mock reasoning failed to find location."
+        try:
+            from google.genai import types
+            async def run_adk():
+                resp_text = ""
+                session = await self.runner.session_service.create_session(
+                    app_name="custom_bot", user_id="robot"
+                )
+                async for event in self.runner.run_async(
+                    user_id="robot",
+                    session_id=session.id,
+                    new_message=types.Content(role="user", parts=[types.Part.from_text(text=goal_handle.request.command)])
+                ):
+                    try:
+                        if event.content and event.content.parts:
+                            for p in event.content.parts:
+                                if p.text:
+                                    resp_text += p.text
+                    except AttributeError:
+                        if hasattr(event, 'output') and event.output:
+                            resp_text += str(event.output)
+                return resp_text
+
+            # Run the ADK asyncio loop safely in this worker thread
+            response = asyncio.run(run_adk())
+            summary = str(response)
+        except Exception as e:
+            self.get_logger().error(f"ADK Agent failed: {e}")
+            summary = f"Reasoning failed: {e}"
         
         self.get_logger().info('Reasoning complete.')
         goal_handle.succeed()
