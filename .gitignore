@@ -37,3 +37,7 @@ env/
 
 # Antigravity / Gemini temporary files
 .gemini/
+
+# Environment Variables
+.env
+
