@@ -67,7 +67,7 @@ sleep 2
 
 # 5. Send action goal to go to the TV cabinet
 echo "Sending navigation command to reasoning node..."
-ros2 action send_goal /reasoning_task custom_bot_interfaces/action/ReasoningTask "{command: 'go to the TV cabinet'}"
+ros2 action send_goal /reasoning_task custom_bot_interfaces/action/ReasoningTask "{command: 'Go to the TV'}"
 
 echo "Command finished! Stopping recording..."
 sleep 2
