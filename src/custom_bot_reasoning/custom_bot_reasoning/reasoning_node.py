@@ -76,11 +76,11 @@ class ReasoningNode(Node):
     
     CRITICAL INSTRUCTIONS:
     1. Use `list_objects_tool` to see all available objects in the environment. Look for keywords matching the user's request.
-    2. If a user asks you to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, you must deduce the area by finding multiple objects that belong there (e.g., Refrigerator, Oven, KitchenTable for kitchen). Calculate the geometric centroid (the average X and Y) of these objects to approximate the center of the room.
+    2. If a user asks you to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, you must deduce the area by finding multiple objects that belong there (e.g., Refrigerator, Oven, KitchenTable for kitchen). Calculate the center of the bounding box of these objects to approximate the center of the room. Do this by finding the minimum and maximum X and Y coordinates among the objects, and calculating the midpoint of those bounds: ((min_x + max_x) / 2, (min_y + max_y) / 2).
     3. Use `get_object_details_tool` to find the exact (x, y, yaw) of target objects.
-    4. Before navigating, you MUST pick an empty coordinate to stand in. Do NOT just blindly add an offset to a target object, or use the exact room centroid if it is occupied.
-    5. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination is empty. Ensure no objects are within at least 0.5m of your chosen coordinate. If there are, pick another coordinate by perturbing the point.
-    6. Finally, use `navigate_and_face_tool` providing your safe (robot_x, robot_y) coordinate AND the target object's (face_x, face_y) coordinate (or the room centroid if looking at the center of the room). The system will automatically calculate the angle so you look at the target.
+    4. Before navigating, you MUST pick an empty coordinate to stand in. Do NOT just blindly add an offset to a target object, or use the exact room center if it is occupied.
+    5. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination is empty. Ensure no objects are within a 0.5m radius. Pass exactly 0.5 as the radius. If there are objects, pick another coordinate by perturbing the point. If you cannot find a safe coordinate after 3 attempts, you must return a final textual response explaining why the navigation is impossible.
+    6. Finally, use `navigate_and_face_tool` providing your safe (robot_x, robot_y) coordinate AND the target object's (face_x, face_y) coordinate (or the room center if looking at the center of the room). The system will automatically calculate the angle so you look at the target.
     """,
             tools=[self.list_objects_tool, self.get_object_details_tool, self.get_nearby_objects_tool, self.navigate_and_face_tool],
         )
