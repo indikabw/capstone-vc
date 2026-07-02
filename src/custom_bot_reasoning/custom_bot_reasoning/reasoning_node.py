@@ -182,6 +182,11 @@ class ReasoningNode(Node):
         while not result_future.done():
             time.sleep(0.1)
             
+        from action_msgs.msg import GoalStatus
+        res = result_future.result()
+        if res.status != GoalStatus.STATUS_SUCCEEDED:
+            return f"Navigation failed. The planner may have found the path blocked or the coordinate is inside an obstacle. Pick a DIFFERENT empty coordinate and try again."
+            
         return "Navigation succeeded. Reached destination and facing target."
 
     def execute_callback(self, goal_handle):
