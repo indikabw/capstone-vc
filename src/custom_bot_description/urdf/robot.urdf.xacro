@@ -18,7 +18,7 @@
   <joint name="arm_mount_joint" type="fixed">
     <parent link="tower_sensor_plate"/> 
     <child link="omx_link1"/>
-    <origin xyz="0 0 0" rpy="0 0 0"/>
+    <origin xyz="0.12 0 0" rpy="0 0 0"/>
   </joint>
 
   <!-- Gazebo plugins for OpenManipulator-X might need to be explicitly included if we want ROS2 control -->

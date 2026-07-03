@@ -936,52 +936,27 @@
       <direction>0 0 -1</direction>
     </light>
 
-    <!-- Custom Test Object: cube_table -->
-    <model name="cube_table">
-      <static>true</static>
-      <pose>-2.0 -2.0 0.125 0 0 0</pose>
-      <link name="link">
-        <visual name="visual">
-          <geometry>
-            <box>
-              <size>0.3 0.3 0.25</size>
-            </box>
-          </geometry>
-          <material>
-            <ambient>0.5 0.5 0.5 1</ambient>
-            <diffuse>0.5 0.5 0.5 1</diffuse>
-          </material>
-        </visual>
-        <collision name="collision">
-          <geometry>
-            <box>
-              <size>0.3 0.3 0.25</size>
-            </box>
-          </geometry>
-        </collision>
-      </link>
-    </model>
-
-    <!-- Custom Test Object: red_cube -->
-    <model name="red_cube">
-      <pose>-2.0 -2.0 0.275 0 0 0</pose>
+    <!-- Custom Test Object: red_cylinder -->
+    <model name="red_cylinder">
+      <pose>-1.87 -2.0 0.15 0 0 0</pose>
       <link name="link">
         <inertial>
-          <mass>0.05</mass>
+          <mass>0.2</mass>
           <inertia>
-            <ixx>2.083e-05</ixx>
+            <ixx>0.001625</ixx>
             <ixy>0.0</ixy>
             <ixz>0.0</ixz>
-            <iyy>2.083e-05</iyy>
+            <iyy>0.001625</iyy>
             <iyz>0.0</iyz>
-            <izz>2.083e-05</izz>
+            <izz>0.00025</izz>
           </inertia>
         </inertial>
         <visual name="visual">
           <geometry>
-            <box>
-              <size>0.05 0.05 0.05</size>
-            </box>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.3</length>
+            </cylinder>
           </geometry>
           <material>
             <ambient>1 0 0 1</ambient>
@@ -990,9 +965,10 @@
         </visual>
         <collision name="collision">
           <geometry>
-            <box>
-              <size>0.05 0.05 0.05</size>
-            </box>
+            <cylinder>
+              <radius>0.05</radius>
+              <length>0.3</length>
+            </cylinder>
           </geometry>
           <surface>
             <friction>

@@ -9,6 +9,8 @@ fi
 
 # Make sure old processes are dead
 pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher|test_nav_and_pick' || true
+source /opt/ros/lyrical/setup.bash
+ros2 daemon stop || true
 sleep 2
 
 source /opt/ros/lyrical/setup.bash
@@ -37,12 +39,11 @@ nohup ros2 launch custom_bot_navigation navigation.launch.py > /tmp/nav.log 2>&1
 NAV_PID=$!
 
 # Wait for Nav2
-echo "Waiting for navigation action server..."
-until ros2 action list | grep -q "/navigate_to_pose"; do
+echo "Waiting for navigation action server and lifecycle..."
+until grep -q "Managed nodes are active" /tmp/nav.log; do
     sleep 1
 done
-echo "Navigation action server online. Sleeping 15s for lifecycle activation..."
-sleep 15
+echo "Navigation lifecycle active."
 
 # 3. Start controllers
 echo "Spawning arm and gripper controllers..."
@@ -85,6 +86,7 @@ sleep 3
 # 8. Kill Gazebo, Nav, MoveIt, and Reasoning
 echo "Cleaning up processes..."
 pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher|test_nav_and_pick' || true
+ros2 daemon stop || true
 
 # 9. Convert bag to video
 echo "Converting bag to video..."

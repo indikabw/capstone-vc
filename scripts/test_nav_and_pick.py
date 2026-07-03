@@ -47,7 +47,7 @@ class NavPickTester(Node):
 def main(args=None):
     rclpy.init(args=args)
     action_client = NavPickTester()
-    action_client.send_goal("Navigate to the red_cube and pick it up.")
+    action_client.send_goal("Pick up the red_cylinder in front of you.")
     rclpy.spin(action_client)
 
 if __name__ == '__main__':

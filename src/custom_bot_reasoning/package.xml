@@ -16,6 +16,7 @@
   <depend>moveit_msgs</depend>
   <depend>sensor_msgs</depend>
   <depend>cv_bridge</depend>
+  <depend>tf2_ros</depend>
   <depend>custom_bot_interfaces</depend>
   
   <test_depend>ament_copyright</test_depend>

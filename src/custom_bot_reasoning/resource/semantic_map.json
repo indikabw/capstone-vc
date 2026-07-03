@@ -1043,11 +1043,11 @@
       "yaw": 0.0
     }
   },
-  "red_cube": {
+  "red_cylinder": {
     "position": {
-      "x": -2.0,
+      "x": -1.87,
       "y": -2.0,
-      "z": 0.275
+      "z": 0.15
     },
     "orientation": {
       "roll": 0.0,
