@@ -929,10 +929,42 @@
       <cast_shadows>0</cast_shadows>
       <direction>0 0 -1</direction>
     </light>
+    <light name='user_directional_light_1' type='directional'>
+      <pose>0 0 10 0 0 0</pose>
+      <cast_shadows>false</cast_shadows>
+      <intensity>1</intensity>
+      <direction>0 0 -1</direction>
+    </light>
+
+    <!-- Custom Test Object: cube_table -->
+    <model name="cube_table">
+      <static>true</static>
+      <pose>-2.0 -2.0 0.125 0 0 0</pose>
+      <link name="link">
+        <visual name="visual">
+          <geometry>
+            <box>
+              <size>0.3 0.3 0.25</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+          </material>
+        </visual>
+        <collision name="collision">
+          <geometry>
+            <box>
+              <size>0.3 0.3 0.25</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
 
     <!-- Custom Test Object: red_cube -->
     <model name="red_cube">
-      <pose>-2.0 -2.0 0.025 0 0 0</pose>
+      <pose>-2.0 -2.0 0.275 0 0 0</pose>
       <link name="link">
         <inertial>
           <mass>0.05</mass>

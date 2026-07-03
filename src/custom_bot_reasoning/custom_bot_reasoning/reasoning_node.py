@@ -314,22 +314,22 @@ class ReasoningNode(Node):
         cube_z = self.sem_map[object_id]['position']['z']
         
         # We assume the robot is positioned perfectly facing the object at 0.35m distance
-        # Let's target x=0.30, y=0.0, z=0.025 to avoid bumper collision
+        # Let's target x=0.30, y=0.0, z=0.275 to reach the elevated cube on the table
         local_target_x = 0.30
         local_target_y = 0.0
-        local_target_z = 0.025
+        local_target_z = 0.275
         
         # 1. Open gripper
         self.execute_moveit_joints('gripper', gripper_joints, [0.010])
         time.sleep(1.0)
         
         # 2. Reach forward and down using pre-calculated joints
-        # This avoids the unreliable KDL IK solver for 4-DOF arms near joint limits.
-        # These angles exactly reach x=0.30, z=0.025 relative to base_link without hitting the bumper.
+        # These angles exactly reach x=0.30, z=0.275 relative to the floor.
+        # (Assuming the arm base joint2 is at z=0.406m)
         j1 = 0.0
-        j2 = 1.45
-        j3 = -0.44
-        j4 = -0.22
+        j2 = 0.968
+        j3 = -0.112
+        j4 = -0.055
         self.get_logger().info(f"Commanding arm to pick pose: {j1}, {j2}, {j3}, {j4}")
         ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1, j2, j3, j4])
         if not ok: return f"Failed to reach object: {msg}"
