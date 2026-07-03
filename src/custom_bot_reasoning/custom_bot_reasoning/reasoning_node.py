@@ -6,7 +6,9 @@ from sensor_msgs.msg import Image
 from custom_bot_interfaces.action import ReasoningTask
 from nav2_msgs.action import NavigateToPose
 from moveit_msgs.action import MoveGroup
-from moveit_msgs.msg import MotionPlanRequest, Constraints, JointConstraint
+from moveit_msgs.msg import MotionPlanRequest, Constraints, JointConstraint, PositionConstraint, OrientationConstraint, BoundingVolume
+from geometry_msgs.msg import Point, Pose, Quaternion
+from shape_msgs.msg import SolidPrimitive
 from cv_bridge import CvBridge
 import threading
 import time
@@ -88,7 +90,7 @@ class ReasoningNode(Node):
     2. If a user asks you to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, you must deduce the area by finding multiple objects that belong there (e.g., Refrigerator, Oven, KitchenTable for kitchen). Calculate the center of the bounding box of these objects to approximate the center of the room. Do this by finding the minimum and maximum X and Y coordinates among the objects, and calculating the midpoint of those bounds: ((min_x + max_x) / 2, (min_y + max_y) / 2).
     3. Use `get_object_details_tool` to find the exact (x, y, yaw) of target objects.
     4. Before navigating, you MUST pick an empty coordinate to stand in. Do NOT just blindly add an offset to a target object, or use the exact room center if it is occupied.
-    5. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination is empty. Ensure no objects are within a 0.5m radius. Pass exactly 0.5 as the radius. If there are objects, pick another coordinate by perturbing the point. If you cannot find a safe coordinate after 3 attempts, you must return a final textual response explaining why the navigation is impossible.
+    5. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination is empty. Ensure no objects are within a 0.35m radius. Pass exactly 0.35 as the radius. If there are objects, pick another coordinate by perturbing the point. If you cannot find a safe coordinate after 3 attempts, you must return a final textual response explaining why the navigation is impossible.
     6. Finally, use `navigate_and_face_tool` providing your safe (robot_x, robot_y) coordinate AND the target object's (face_x, face_y) coordinate (or the room center if looking at the center of the room). The system will automatically calculate the angle so you look at the target.
     7. Use `pick_tool(object_id)` to pick up an object. You must be navigated near it and facing it first.
     8. Use `place_tool(x, y, z)` to place an object at a target 3D coordinate.
@@ -201,6 +203,60 @@ class ReasoningNode(Node):
             
         return "Navigation succeeded. Reached destination and facing target."
 
+    def execute_moveit_pose(self, group_name, link_name, x, y, z, roll=0.0, pitch=0.0, yaw=0.0):
+        if not self._moveit_client.wait_for_server(timeout_sec=2.0):
+            return False, "Failed to connect to MoveIt2 action server."
+
+        goal_msg = MoveGroup.Goal()
+        req = MotionPlanRequest()
+        req.group_name = group_name
+        req.num_planning_attempts = 5
+        req.allowed_planning_time = 5.0
+        
+        c = Constraints()
+        
+        # Position Constraint ONLY - 4DOF arms cannot satisfy 6DOF constraints reliably
+        pc = PositionConstraint()
+        pc.header.frame_id = "base_link"
+        pc.link_name = link_name
+        
+        target_point = Point(x=float(x), y=float(y), z=float(z))
+        
+        bv = BoundingVolume()
+        sphere = SolidPrimitive()
+        sphere.type = SolidPrimitive.SPHERE
+        sphere.dimensions = [0.05]
+        bv.primitives.append(sphere)
+        
+        pose = Pose()
+        pose.position = target_point
+        bv.primitive_poses.append(pose)
+        
+        pc.constraint_region = bv
+        pc.weight = 1.0
+        c.position_constraints.append(pc)
+        
+        req.goal_constraints.append(c)
+        goal_msg.request = req
+
+        future = self._moveit_client.send_goal_async(goal_msg)
+        while not future.done():
+            time.sleep(0.1)
+
+        goal_handle = future.result()
+        if not goal_handle.accepted:
+            return False, "MoveIt2 pose goal rejected."
+
+        result_future = goal_handle.get_result_async()
+        while not result_future.done():
+            time.sleep(0.1)
+
+        res = result_future.result().result
+        if res.error_code.val != 1:
+            return False, f"MoveIt2 pose failed with error code: {res.error_code.val}"
+            
+        return True, "Success"
+
     def execute_moveit_joints(self, group_name, joint_names, positions):
         if not self._moveit_client.wait_for_server(timeout_sec=2.0):
             return False, "Failed to connect to MoveIt2 action server."
@@ -249,13 +305,34 @@ class ReasoningNode(Node):
         arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
         gripper_joints = ['omx_gripper_left_joint']
         
+        # We need the cube's location. Fetch it from semantic map
+        if object_id not in self.sem_map:
+            return f"Error: Object {object_id} not found."
+            
+        cube_x = self.sem_map[object_id]['position']['x']
+        cube_y = self.sem_map[object_id]['position']['y']
+        cube_z = self.sem_map[object_id]['position']['z']
+        
+        # We assume the robot is positioned perfectly facing the object at 0.35m distance
+        # Let's target x=0.30, y=0.0, z=0.05 to avoid bumper collision
+        local_target_x = 0.30
+        local_target_y = 0.0
+        local_target_z = 0.05
+        
         # 1. Open gripper
         self.execute_moveit_joints('gripper', gripper_joints, [0.010])
         time.sleep(1.0)
         
-        # 2. Move up into camera frame (Wave)
-        ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
-        if not ok: return msg
+        # 2. Reach forward and down using pre-calculated joints
+        # This avoids the unreliable KDL IK solver for 4-DOF arms near joint limits.
+        # These angles exactly reach x=0.30, z=0.05 relative to base_link.
+        j1 = 0.0
+        j2 = 1.4686
+        j3 = -0.2630
+        j4 = -0.7642
+        self.get_logger().info(f"Commanding arm to pick pose: {j1}, {j2}, {j3}, {j4}")
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1, j2, j3, j4])
+        if not ok: return f"Failed to reach object: {msg}"
         time.sleep(2.0)
         
         # 3. Close gripper

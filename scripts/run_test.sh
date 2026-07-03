@@ -8,7 +8,7 @@ if [ -f ".env" ]; then
 fi
 
 # Make sure old processes are dead
-pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher' || true
+pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher|test_nav_and_pick' || true
 sleep 2
 
 source /opt/ros/lyrical/setup.bash
@@ -84,7 +84,7 @@ sleep 3
 
 # 8. Kill Gazebo, Nav, MoveIt, and Reasoning
 echo "Cleaning up processes..."
-pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher' || true
+pkill -9 -f '[r]os2|[g]z|[r]uby|[b]ehave|[c]olcon|[c]omponent|[p]ython3.*custom_bot|robot_state_publisher|test_nav_and_pick' || true
 
 # 9. Convert bag to video
 echo "Converting bag to video..."
