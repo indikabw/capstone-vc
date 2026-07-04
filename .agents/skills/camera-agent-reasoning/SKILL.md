@@ -26,3 +26,8 @@ LLM calls via ADK 2.0 are blocking operations. If they run on the main `rclpy` e
 1.  **Image Prep**: Encode the ROS2 `sensor_msgs/msg/Image` (via cv_bridge) into a format expected by the ADK vision models.
 2.  **Prompt Engineering**: Construct a system prompt that defines the agent's available actions (e.g., `move_to(x,y)`, `pick(x,y,z)`).
 3.  **Action Dispatch**: Parse the ADK output. If the agent decides to move, formulate a `NavigateToPose` goal. If it decides to manipulate, formulate a MoveIt2 Cartesian goal. Send these goals via standard ROS2 Action Clients from within the reasoning node.
+
+## 4. Spatial Reasoning and Inverse Kinematics (IK) Pitfalls
+When reasoning about physical interaction with the environment, ADK agents must correctly model spatial offsets and hardware kinematics:
+*   **Actuation Point Offset**: Do not calculate IK trajectories solely for the wrist joint (e.g., `link5`). The physical grasp occurs at the center of the gripper jaws, which often protrudes significantly forward of the wrist (e.g., `r + 0.02` for an object at `r`). Failing to account for gripper depth results in the jaws closing on empty air behind the object.
+*   **Hardware-Specific Joint Limits**: Gripper joint values are rarely intuitive. For example, on the OpenManipulator-X, a positive joint limit (e.g., `0.02`) opens the gripper fully, while a negative joint limit (e.g., `-0.011`) closes it. If a generic "close gripper" value is set to a positive number, the gripper will simply remain open during the grasp action. Always verify physical joint limits (`lower` and `upper` in URDF) and their directional meaning.

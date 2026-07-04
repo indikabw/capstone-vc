@@ -120,3 +120,11 @@ def main():
 if __name__ == '__main__':
     main()
 ```
+
+---
+
+## 6. Physics Grounding and Validation Pitfalls
+When reasoning nodes or controllers execute physical tasks (e.g. pick and place), ensure the following are validated during simulation configuration and testing:
+*   **Spawn Height Adjustments**: Avoid spawning objects or robots at high `z` coordinates (e.g. `0.1` or `0.15`) relative to their bounding box. Excessive drop heights cause physics engines (like ODE or Bullet) to bounce the object or robot on load, causing the robot to drift or topple before the test begins. Tune spawn `z` values down to realistic ground gaps (e.g. `0.01`).
+*   **Object Properties**: Grasping small objects requires precise tuning. Objects with insufficient mass (e.g. `0.001` kg) or unrealistic collision friction will simply slip out of the gripper or be violently ejected. Increase object mass and inertia tensors to stable values (e.g. `0.02` kg) to prevent jitter.
+*   **True Physics State vs. Node State**: A ROS2 Node (like MoveIt2) may report "Success" because it executed a trajectory, even if the gripper slipped or closed on empty air. Therefore, automated integration tests MUST use `gz topic -e` or `ros2 topic echo` to parse the actual physical state (like the `z` coordinate of the target object) to verify a lift occurred, rather than relying on the controller's success signal.
