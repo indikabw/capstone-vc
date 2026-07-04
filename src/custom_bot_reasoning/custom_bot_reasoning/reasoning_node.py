@@ -83,25 +83,41 @@ class ReasoningNode(Node):
         # Load semantic map once
         self.sem_map = self.load_semantic_map()
         
+        spatial_critic = Agent(
+            name="spatial_critic",
+            model="gemini-2.5-pro",
+            description="Executes spatial reasoning and collision-aware robot trajectories. Use this to safely move the robot.",
+            instruction="""
+    You are the Spatial Critic Agent. The Semantic Planner will give you high-level intents.
+    Your job is to ground these intents into safe, feasible robot movements.
+    
+    1. For picking up objects, you must first validate the kinematics.
+    2. Use `check_grasp_feasibility_tool(object_id, grasp_z, pitch_angle)`.
+       - Try pitch_angle=0.0 (horizontal approach) first.
+       - If it fails, try adjusting the pitch_angle (e.g., -0.5, or -1.57 for top-down) or the grasp_z slightly.
+    3. Once you find a feasible configuration, call `execute_grasp_tool(object_id, grasp_z, pitch_angle)` with those EXACT parameters.
+    4. For placing objects, use `place_tool(x, y, z)`.
+    5. For navigation, use `navigate_and_face_tool` with a safe coordinate from `get_nearby_objects_tool`.
+    """,
+            tools=[self.get_nearby_objects_tool, self.navigate_and_face_tool, self.check_grasp_feasibility_tool, self.execute_grasp_tool, self.place_tool]
+        )
+
         self.agent = Agent(
             name="robot_agent",
             model="gemini-2.5-pro",
             instruction="""
-    You are an autonomous robot assistant controlling a TurtleBot4 (actual base radius 0.17m) with an OpenManipulator-X arm.
-    You must execute spatial reasoning to find objects, navigate to them, and manipulate them.
+    You are an autonomous robot assistant controlling a TurtleBot4 (base radius 0.17m) with an OpenManipulator-X arm.
+    You are the high-level Semantic Planner.
     
     CRITICAL INSTRUCTIONS:
     1. Use `list_objects_tool` to see all available objects in the environment. Look for keywords matching the user's request.
-    2. If a user asks you to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, you must deduce the area by finding multiple objects that belong there (e.g., Refrigerator, Oven, KitchenTable for kitchen). Calculate the center of the bounding box of these objects to approximate the center of the room. Do this by finding the minimum and maximum X and Y coordinates among the objects, and calculating the midpoint of those bounds: ((min_x + max_x) / 2, (min_y + max_y) / 2).
-    3. Use `get_object_details_tool` to find the exact (x, y, yaw) of target objects.
-    4. Before navigating, you MUST pick an empty coordinate to stand in. Do NOT just blindly add an offset to a target object, or use the exact room center if it is occupied.
-    5. When picking up an object, you MUST stand exactly 0.42m away from the object's center and face it. To prevent path planning collisions with the corners of square tables, you MUST approach the object strictly along the X or Y axis (orthogonally). For example, if target is at (tx, ty), your standing position MUST be exactly one of: (tx + 0.42, ty), (tx - 0.42, ty), (tx, ty + 0.42), or (tx, ty - 0.42). Choose the one that is closest to your current position and free of obstacles.
-    6. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination (rx, ry) is empty of obstacles. Ensure no other objects (excluding the target object itself) are within a 0.20m radius of your proposed standing spot. Pass exactly 0.20 as the radius. If there are other obstacles, try another standing spot at the same 0.42m distance but at a slightly different angle. If you cannot find a safe coordinate after 3 attempts, return a text explaining why.
-    7. Finally, use `navigate_and_face_tool` providing your safe (robot_x, robot_y) coordinate AND the target object's (face_x, face_y) coordinate. The system will automatically calculate the angle so you look at the target.
-    8. Use `pick_tool(object_id, grasp_z)` to pick up the object once you have successfully navigated near it and are facing it. You MUST check the object's `size` (dz height) from `get_object_details_tool`. For tall objects, calculate a `grasp_z` near the top of the object to avoid colliding with the body (e.g., `z + (dz/2) - 0.00`). For flat objects, use `z`.
-    9. Use `place_tool(x, y, z)` to place an object at a target 3D coordinate.
+    2. If asked to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, deduce the area by finding objects that belong there. Calculate the center of the bounding box of these objects.
+    3. Use `get_object_details_tool` to find the exact (x, y, yaw, size) of target objects.
+    4. Formulate a step-by-step plan for the task.
+    5. Delegate the actual execution of navigation and grasping to the `spatial_critic` sub-agent. Give it clear instructions (e.g., "Navigate to a safe spot near (x,y) and pick up 'red_block' at grasp_z=0.25").
     """,
-            tools=[self.list_objects_tool, self.get_object_details_tool, self.get_nearby_objects_tool, self.navigate_and_face_tool, self.pick_tool, self.place_tool],
+            tools=[self.list_objects_tool, self.get_object_details_tool],
+            sub_agents=[spatial_critic]
         )
         try:
             from google.adk.runners import InMemoryRunner
@@ -314,87 +330,92 @@ class ReasoningNode(Node):
                 
         return q
 
-    def pick_tool(self, object_id: str, grasp_z: float) -> str:
-        """Executes a predefined trajectory to pick up an object in front of the robot."""
-        self.get_logger().info(f'Tool called: pick_tool({object_id}, grasp_z={grasp_z})')
+    def calculate_ik_for_grasp(self, object_id: str, grasp_z: float, pitch_angle: float):
+        """Helper function to calculate the IK solutions for grasping."""
+        if object_id not in self.sem_map:
+            raise ValueError(f"Object {object_id} not found.")
+            
+        cube_x = self.sem_map[object_id]['position']['x']
+        cube_y = self.sem_map[object_id]['position']['y']
+        cube_z = float(grasp_z) - 0.05
+        
+        t = self.tf_buffer.lookup_transform('omx_link1', 'map', rclpy.time.Time())
+        
+        tx = t.transform.translation.x
+        ty = t.transform.translation.y
+        tz = t.transform.translation.z
+        qx = t.transform.rotation.x
+        qy = t.transform.rotation.y
+        qz = t.transform.rotation.z
+        qw = t.transform.rotation.w
+        
+        vx = cube_x
+        vy = cube_y
+        vz = cube_z
+        
+        cx = qy * vz - qz * vy
+        cy = qz * vx - qx * vz
+        cz = qx * vy - qy * vx
+        
+        ax = cx + qw * vx
+        ay = cy + qw * vy
+        az = cz + qw * vz
+        
+        bx = qy * az - qz * ay
+        by = qz * ax - qx * az
+        bz = qx * ay - qy * ax
+        
+        local_x = vx + 2.0 * bx + tx
+        local_y = vy + 2.0 * by + ty
+        local_z = vz + 2.0 * bz + tz
+        
+        j1 = math.atan2(local_y, local_x)
+        r = math.sqrt(local_x**2 + local_y**2)
+        
+        joints_pre = self.solve_ik_planar(r - 0.06, local_z, alpha=pitch_angle)
+        joints_grasp = self.solve_ik_planar(r - 0.02, local_z, alpha=pitch_angle)
+        joints_lift = self.solve_ik_planar(r - 0.02, local_z + 0.15, alpha=pitch_angle)
+        
+        return j1, joints_pre, joints_grasp, joints_lift
+
+    def check_grasp_feasibility_tool(self, object_id: str, grasp_z: float, pitch_angle: float) -> str:
+        """
+        Validates if the robot can safely grasp the object at the specified grasp_z height and pitch_angle.
+        Args:
+            object_id: The name of the object to grasp.
+            grasp_z: The absolute Z coordinate to grasp at.
+            pitch_angle: The approach angle of the gripper in radians (0.0 is horizontal, -1.57 is top-down).
+        """
+        self.get_logger().info(f'Tool called: check_grasp_feasibility_tool({object_id}, z={grasp_z}, pitch={pitch_angle})')
+        try:
+            j1, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(object_id, grasp_z, pitch_angle)
+        except Exception as e:
+            return f"Feasibility check failed: {e}"
+            
+        if j_pre is None or j_grasp is None or j_lift is None:
+            return "Feasibility check failed: Dynamic IK failed to converge to a reachable solution."
+            
+        return "Feasibility check passed. The grasp is kinematically valid. You may now call execute_grasp_tool with these exact parameters."
+
+    def execute_grasp_tool(self, object_id: str, grasp_z: float, pitch_angle: float) -> str:
+        """Executes a validated grasping sequence."""
+        self.get_logger().info(f'Tool called: execute_grasp_tool({object_id}, z={grasp_z}, pitch={pitch_angle})')
         
         arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
         gripper_joints = ['omx_gripper_left_joint']
         
-        # We need the cube's location. Fetch it from semantic map
-        if object_id not in self.sem_map:
-            return f"Error: Object {object_id} not found."
-            
-        cube_x = self.sem_map[object_id]['position']['x']
-        cube_y = self.sem_map[object_id]['position']['y']
-        
-        # Grasp slightly below the top of the object
-        cube_z = float(grasp_z) - 0.05
-        
-        # 1. Open gripper fully (0.019 is max limit, -0.010 is closed)
-        self.execute_moveit_joints('gripper', gripper_joints, [0.019])
-        time.sleep(1.0)
-        
-        joints_pre = None
-        joints_grasp = None
-        joints_lift = None
-        j1 = 0.0
-        
         try:
-            # Look up transform from map to omx_link1
-            t = self.tf_buffer.lookup_transform('omx_link1', 'map', rclpy.time.Time())
-            
-            tx = t.transform.translation.x
-            ty = t.transform.translation.y
-            tz = t.transform.translation.z
-            qx = t.transform.rotation.x
-            qy = t.transform.rotation.y
-            qz = t.transform.rotation.z
-            qw = t.transform.rotation.w
-            
-            # Rotate point (cube_x, cube_y, cube_z) by quaternion (qx, qy, qz, qw)
-            vx = cube_x
-            vy = cube_y
-            vz = cube_z
-            
-            cx = qy * vz - qz * vy
-            cy = qz * vx - qx * vz
-            cz = qx * vy - qy * vx
-            
-            ax = cx + qw * vx
-            ay = cy + qw * vy
-            az = cz + qw * vz
-            
-            bx = qy * az - qz * ay
-            by = qz * ax - qx * az
-            bz = qx * ay - qy * ax
-            
-            local_x = vx + 2.0 * bx + tx
-            local_y = vy + 2.0 * by + ty
-            local_z = vz + 2.0 * bz + tz
-            
-            self.get_logger().info(f"Target cube in omx_link1 frame: x={local_x:.3f}, y={local_y:.3f}, z={local_z:.3f}")
-            
-            # Calculate dynamic joint1 (yaw)
-            j1 = math.atan2(local_y, local_x)
-            
-            # Distance in XY plane
-            r = math.sqrt(local_x**2 + local_y**2)
-            
-            # Calculate IK for the sequence (alpha=0.0 means horizontal forward pointing)
-            # Stand slightly back to give the wrist room to bend horizontally.
-            # r is the center of the cylinder. 
-            # We want the fingers to wrap around the edge, so we subtract 0.02.
-            joints_pre = self.solve_ik_planar(r - 0.06, local_z, alpha=0.0)
-            joints_grasp = self.solve_ik_planar(r - 0.02, local_z, alpha=0.0)
-            joints_lift = self.solve_ik_planar(r - 0.02, local_z + 0.15, alpha=0.0)
+            j1, joints_pre, joints_grasp, joints_lift = self.calculate_ik_for_grasp(object_id, grasp_z, pitch_angle)
         except Exception as e:
-            self.get_logger().error(f"Failed to lookup transform or solve IK: {e}.")
-            return f"Failed to pick object due to tf error: {e}"
+            return f"Execution failed: {e}"
             
         if joints_pre is None or joints_grasp is None or joints_lift is None:
-            return "Failed to pick object: Dynamic IK failed to converge to a reachable solution."
-            
+            return "Execution failed: IK did not converge."
+
+        # 1. Open gripper fully
+        self.execute_moveit_joints('gripper', gripper_joints, [0.019])
+        time.sleep(1.0)
+
         # 2. Pre-grasp approach
         self.get_logger().info("Moving to pre-grasp pose")
         ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(joints_pre))
