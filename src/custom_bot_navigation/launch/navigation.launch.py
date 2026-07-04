@@ -62,5 +62,6 @@ def generate_launch_description():
     ld.add_action(declare_use_sim_time_cmd)
     ld.add_action(nav2_bringup_cmd)
     ld.add_action(TimerAction(period=5.0, actions=[scan_bridge]))
+    ld.add_action(Node(package='tf2_ros', executable='static_transform_publisher', arguments=['--x', '0', '--y', '0', '--z', '0', '--roll', '0', '--pitch', '0', '--yaw', '0', '--frame-id', 'map', '--child-frame-id', 'odom'], output='screen'))
 
     return ld

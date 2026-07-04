@@ -114,7 +114,7 @@ class ReasoningNode(Node):
     2. If asked to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, deduce the area by finding objects that belong there. Calculate the center of the bounding box of these objects.
     3. Use `get_object_details_tool` to find the exact (x, y, yaw, size) of target objects.
     4. Formulate a step-by-step plan for the task.
-    5. Delegate the actual execution of navigation and grasping to the `spatial_critic` sub-agent. Give it clear instructions (e.g., "Navigate to a safe spot near (x,y) and pick up 'red_block' at grasp_z=0.25").
+    5. Delegate the actual execution of navigation and grasping to the `spatial_critic` sub-agent. For vertical objects like cylinders, the most stable grasp point is the center of mass. Instruct the critic to use the object's 'z' coordinate from `get_object_details_tool` as the `grasp_z`. Give clear instructions (e.g., "Navigate to a safe spot near (x,y) and pick up 'red_block' at grasp_z=0.1").
     """,
             tools=[self.list_objects_tool, self.get_object_details_tool],
             sub_agents=[spatial_critic]
@@ -430,7 +430,8 @@ class ReasoningNode(Node):
         
         # 4. Close gripper
         self.get_logger().info("Closing gripper")
-        self.execute_moveit_joints('gripper', gripper_joints, [-0.008])
+        # In Gazebo, we must command the position controller slightly past the object's width to maintain continuous PID effort.
+        self.execute_moveit_joints('gripper', gripper_joints, [-0.010])
         time.sleep(1.0)
         
         # 5. Lift straight up
