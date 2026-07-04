@@ -51,13 +51,13 @@ class NavPickTester(Node):
             #     y: -2.0
             #     z: 0.15
             #   }
-            z_match = re.search(r'position\s*\{\s*x:[^\n]+\n\s*y:[^\n]+\n\s*z:\s*([\d\.\-]+)', output)
+            z_match = re.search(r'Pose\s*\[\s*XYZ[^\]]*\][^\n]*\n\s*\[\s*[^ ]+\s+[^ ]+\s+([^ ]+)\s*\]', output)
             
             if z_match:
-                z = float(z_match.group(1))
+                z = float(z_match.group(1).replace(']', ''))
                 self.get_logger().info(f'Physics check: red_cylinder z = {z:.4f}')
-                # cylinder should be higher than 0.15 (initial ground pos)
-                if z > 0.17:
+                # cylinder should be higher than its initial ground pos (0.10 now)
+                if z > 0.12:
                     return True
                 else:
                     self.get_logger().error('Cylinder z coordinate too low, lift failed')

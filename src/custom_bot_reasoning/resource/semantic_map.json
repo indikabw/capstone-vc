@@ -1482,7 +1482,7 @@
     "position": {
       "x": -1.87,
       "y": -2.0,
-      "z": 0.15
+      "z": 0.1
     },
     "orientation": {
       "roll": 0.0,
@@ -1492,7 +1492,7 @@
     "size": {
       "dx": 0.03,
       "dy": 0.03,
-      "dz": 0.3
+      "dz": 0.2
     }
   },
   "destination_camera": {
