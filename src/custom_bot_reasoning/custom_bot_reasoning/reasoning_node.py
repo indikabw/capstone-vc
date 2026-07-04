@@ -85,7 +85,7 @@ class ReasoningNode(Node):
         
         self.agent = Agent(
             name="robot_agent",
-            model="gemini-2.5-flash",
+            model="gemini-2.5-pro",
             instruction="""
     You are an autonomous robot assistant controlling a TurtleBot4 (actual base radius 0.17m) with an OpenManipulator-X arm.
     You must execute spatial reasoning to find objects, navigate to them, and manipulate them.
@@ -95,10 +95,10 @@ class ReasoningNode(Node):
     2. If a user asks you to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, you must deduce the area by finding multiple objects that belong there (e.g., Refrigerator, Oven, KitchenTable for kitchen). Calculate the center of the bounding box of these objects to approximate the center of the room. Do this by finding the minimum and maximum X and Y coordinates among the objects, and calculating the midpoint of those bounds: ((min_x + max_x) / 2, (min_y + max_y) / 2).
     3. Use `get_object_details_tool` to find the exact (x, y, yaw) of target objects.
     4. Before navigating, you MUST pick an empty coordinate to stand in. Do NOT just blindly add an offset to a target object, or use the exact room center if it is occupied.
-    5. When picking up an object, you MUST stand exactly 0.35m away from the object's center and face it. To prevent path planning collisions with the corners of square tables, you MUST approach the object strictly along the X or Y axis (orthogonally). For example, if target is at (tx, ty), your standing position MUST be exactly one of: (tx + 0.35, ty), (tx - 0.35, ty), (tx, ty + 0.35), or (tx, ty - 0.35). Choose the one that is closest to your current position and free of obstacles.
-    6. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination (rx, ry) is empty of obstacles. Ensure no other objects (excluding the target object itself) are within a 0.20m radius of your proposed standing spot. Pass exactly 0.20 as the radius. If there are other obstacles, try another standing spot at the same 0.35m distance but at a slightly different angle. If you cannot find a safe coordinate after 3 attempts, return a text explaining why.
+    5. When picking up an object, you MUST stand exactly 0.42m away from the object's center and face it. To prevent path planning collisions with the corners of square tables, you MUST approach the object strictly along the X or Y axis (orthogonally). For example, if target is at (tx, ty), your standing position MUST be exactly one of: (tx + 0.42, ty), (tx - 0.42, ty), (tx, ty + 0.42), or (tx, ty - 0.42). Choose the one that is closest to your current position and free of obstacles.
+    6. Use `get_nearby_objects_tool(x, y, radius)` to verify if your proposed destination (rx, ry) is empty of obstacles. Ensure no other objects (excluding the target object itself) are within a 0.20m radius of your proposed standing spot. Pass exactly 0.20 as the radius. If there are other obstacles, try another standing spot at the same 0.42m distance but at a slightly different angle. If you cannot find a safe coordinate after 3 attempts, return a text explaining why.
     7. Finally, use `navigate_and_face_tool` providing your safe (robot_x, robot_y) coordinate AND the target object's (face_x, face_y) coordinate. The system will automatically calculate the angle so you look at the target.
-    8. Use `pick_tool(object_id)` to pick up the object once you have successfully navigated near it and are facing it.
+    8. Use `pick_tool(object_id, grasp_z)` to pick up the object once you have successfully navigated near it and are facing it. You MUST check the object's `size` (dz height) from `get_object_details_tool`. For tall objects, calculate a `grasp_z` near the top of the object to avoid colliding with the body (e.g., `z + (dz/2) - 0.00`). For flat objects, use `z`.
     9. Use `place_tool(x, y, z)` to place an object at a target 3D coordinate.
     """,
             tools=[self.list_objects_tool, self.get_object_details_tool, self.get_nearby_objects_tool, self.navigate_and_face_tool, self.pick_tool, self.place_tool],
@@ -240,8 +240,12 @@ class ReasoningNode(Node):
             jc = JointConstraint()
             jc.joint_name = j
             jc.position = t
-            jc.tolerance_above = 0.05
-            jc.tolerance_below = 0.05
+            if 'gripper' in j:
+                jc.tolerance_above = 0.001
+                jc.tolerance_below = 0.001
+            else:
+                jc.tolerance_above = 0.05
+                jc.tolerance_below = 0.05
             jc.weight = 1.0
             c.joint_constraints.append(jc)
             
@@ -310,9 +314,9 @@ class ReasoningNode(Node):
                 
         return q
 
-    def pick_tool(self, object_id: str) -> str:
-        """Executes a predefined trajectory to pick up the specified object."""
-        self.get_logger().info(f'Tool called: pick_tool({object_id})')
+    def pick_tool(self, object_id: str, grasp_z: float) -> str:
+        """Executes a predefined trajectory to pick up an object in front of the robot."""
+        self.get_logger().info(f'Tool called: pick_tool({object_id}, grasp_z={grasp_z})')
         
         arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
         gripper_joints = ['omx_gripper_left_joint']
@@ -323,19 +327,19 @@ class ReasoningNode(Node):
             
         cube_x = self.sem_map[object_id]['position']['x']
         cube_y = self.sem_map[object_id]['position']['y']
-        cube_z = self.sem_map[object_id]['position']['z']
         
-        # Default fallback joint angles
-        j1 = 0.0
-        j2 = 0.968
-        j3 = -0.112
-        j4 = -0.055
+        # Grasp slightly below the top of the object
+        cube_z = float(grasp_z) - 0.05
         
-        # 1. Open gripper
-        self.execute_moveit_joints('gripper', gripper_joints, [0.010])
+        # 1. Open gripper fully (0.019 is max limit, -0.010 is closed)
+        self.execute_moveit_joints('gripper', gripper_joints, [0.019])
         time.sleep(1.0)
         
-        # Try to look up target position relative to the arm base (omx_link1)
+        joints_pre = None
+        joints_grasp = None
+        joints_lift = None
+        j1 = 0.0
+        
         try:
             # Look up transform from map to omx_link1
             t = self.tf_buffer.lookup_transform('omx_link1', 'map', rclpy.time.Time())
@@ -377,32 +381,51 @@ class ReasoningNode(Node):
             # Distance in XY plane
             r = math.sqrt(local_x**2 + local_y**2)
             
-            # Solve planar IK (alpha=1.57 for pointing forward)
-            joints = self.solve_ik_planar(r, local_z, alpha=1.57)
-            if joints is not None:
-                j2, j3, j4 = joints
-                self.get_logger().info(f"Dynamically solved IK: j1={j1:.4f}, j2={j2:.4f}, j3={j3:.4f}, j4={j4:.4f}")
-            else:
-                self.get_logger().warn("Dynamic IK failed. Using fallback joints.")
+            # Calculate IK for the sequence (alpha=0.0 means horizontal forward pointing)
+            # Stand slightly back to give the wrist room to bend horizontally.
+            # r is the center of the cylinder. 
+            # We want the fingers to wrap around the edge, so we subtract 0.02.
+            joints_pre = self.solve_ik_planar(r - 0.06, local_z, alpha=0.0)
+            joints_grasp = self.solve_ik_planar(r - 0.02, local_z, alpha=0.0)
+            joints_lift = self.solve_ik_planar(r - 0.02, local_z + 0.15, alpha=0.0)
         except Exception as e:
-            self.get_logger().error(f"Failed to lookup transform or solve IK: {e}. Using default.")
+            self.get_logger().error(f"Failed to lookup transform or solve IK: {e}.")
+            return f"Failed to pick object due to tf error: {e}"
             
-        # 2. Reach forward and down using calculated/fallback joints
-        self.get_logger().info(f"Commanding arm to pick pose: {j1}, {j2}, {j3}, {j4}")
-        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1, j2, j3, j4])
-        if not ok: return f"Failed to reach object: {msg}"
-        time.sleep(2.0)
-        
-        # 3. Close gripper
-        self.execute_moveit_joints('gripper', gripper_joints, [-0.010])
+        if joints_pre is None or joints_grasp is None or joints_lift is None:
+            return "Failed to pick object: Dynamic IK failed to converge to a reachable solution."
+            
+        # 2. Pre-grasp approach
+        self.get_logger().info("Moving to pre-grasp pose")
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(joints_pre))
+        if not ok: return f"Failed to reach pre-grasp: {msg}"
         time.sleep(1.0)
         
-        # 4. Retreat (Home)
+        # 3. Grasping
+        self.get_logger().info("Moving to grasp pose")
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(joints_grasp))
+        if not ok: return f"Failed to reach grasp pose: {msg}"
+        time.sleep(1.0)
+        
+        # 4. Close gripper
+        self.get_logger().info("Closing gripper")
+        self.execute_moveit_joints('gripper', gripper_joints, [0.0])
+        time.sleep(1.0)
+        
+        # 5. Lift straight up
+        self.get_logger().info("Lifting object")
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(joints_lift))
+        if not ok: return f"Failed to lift object: {msg}"
+        time.sleep(1.0)
+        
+        # 6. Retreat to Home with object
+        self.get_logger().info("Retreating to home position")
         ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
         if not ok: return msg
         time.sleep(2.0)
             
         return f"Successfully picked up {object_id}."
+
 
     def place_tool(self, x: float, y: float, z: float) -> str:
         """Executes a predefined trajectory to place an object at (x, y, z)."""

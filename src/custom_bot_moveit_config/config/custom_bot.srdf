@@ -27,7 +27,7 @@
     
     <end_effector name="omx_end_effector" parent_link="omx_end_effector_link" group="gripper" parent_group="arm"/>
     
-    <disable_collisions link1="omx_gripper_left_link" link2="omx_gripper_right_link" reason="Never"/>
+    <disable_collisions link1="omx_gripper_left_link" link2="omx_gripper_right_link" reason="Default"/>
     <disable_collisions link1="omx_gripper_left_link" link2="omx_link4" reason="Never"/>
     <disable_collisions link1="omx_gripper_left_link" link2="omx_link5" reason="Adjacent"/>
     <disable_collisions link1="omx_gripper_right_link" link2="omx_link4" reason="Never"/>

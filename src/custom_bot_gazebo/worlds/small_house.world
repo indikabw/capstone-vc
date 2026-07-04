@@ -954,7 +954,7 @@
         <visual name="visual">
           <geometry>
             <cylinder>
-              <radius>0.05</radius>
+              <radius>0.015</radius>
               <length>0.3</length>
             </cylinder>
           </geometry>
@@ -966,7 +966,7 @@
         <collision name="collision">
           <geometry>
             <cylinder>
-              <radius>0.05</radius>
+              <radius>0.015</radius>
               <length>0.3</length>
             </cylinder>
           </geometry>
@@ -979,6 +979,32 @@
             </friction>
           </surface>
         </collision>
+      </link>
+    </model>
+
+    <model name="destination_camera">
+      <static>true</static>
+      <!-- Close up side-view of grasping test: robot is at x=-1.52 y=-2.0, cylinder at x=-1.87 -->
+      <pose>-1.7 -2.8 0.6 0 0.2 1.5708</pose>
+      <link name="link">
+        <sensor name="camera" type="camera">
+          <camera>
+            <horizontal_fov>1.2</horizontal_fov>
+            <image>
+              <width>1280</width>
+              <height>720</height>
+              <format>R8G8B8</format>
+            </image>
+            <clip>
+              <near>0.1</near>
+              <far>100</far>
+            </clip>
+          </camera>
+          <always_on>1</always_on>
+          <!-- Reduced to 5 fps (was 15) to limit llvmpipe load while remaining smooth -->
+          <update_rate>5</update_rate>
+          <topic>destination_camera/image_raw</topic>
+        </sensor>
       </link>
     </model>
 

@@ -4,6 +4,8 @@ from rclpy.node import Node
 from rclpy.action import ActionClient
 from custom_bot_interfaces.action import ReasoningTask
 import time
+import subprocess
+import re
 
 class NavPickTester(Node):
     def __init__(self):
@@ -36,11 +38,50 @@ class NavPickTester(Node):
         self._get_result_future = goal_handle.get_result_async()
         self._get_result_future.add_done_callback(self.get_result_callback)
 
+    def verify_physics(self):
+        try:
+            result = subprocess.run(["gz", "model", "-m", "red_cylinder", "-p"], capture_output=True, text=True, check=True)
+            output = result.stdout
+            
+            # Extract z position from output
+            # Output format looks like:
+            # pose {
+            #   position {
+            #     x: -1.87
+            #     y: -2.0
+            #     z: 0.15
+            #   }
+            z_match = re.search(r'position\s*\{\s*x:[^\n]+\n\s*y:[^\n]+\n\s*z:\s*([\d\.\-]+)', output)
+            
+            if z_match:
+                z = float(z_match.group(1))
+                self.get_logger().info(f'Physics check: red_cylinder z = {z:.4f}')
+                if z > 0.18:
+                    return True
+                else:
+                    self.get_logger().error('Physics check failed: Object was not lifted!')
+                    return False
+            else:
+                self.get_logger().error('Could not parse z coordinate from gz model output')
+                return False
+        except Exception as e:
+            self.get_logger().error(f'Failed to run gz model: {e}')
+            return False
+
     def get_result_callback(self, future):
         result = future.result().result
         status = future.result().status
         self.get_logger().info(f'Final Status: {status}')
-        self.get_logger().info(f'Success: {result.success}')
+        
+        # Verify physical success even if node claims success
+        physically_successful = False
+        if result.success:
+            self.get_logger().info('Node claims success. Verifying with physics engine...')
+            physically_successful = self.verify_physics()
+        else:
+            self.get_logger().info('Node claims failure.')
+
+        self.get_logger().info(f'Success: {physically_successful}')
         self.get_logger().info(f'Summary: {result.summary}')
         rclpy.shutdown()
 

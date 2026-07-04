@@ -21,22 +21,46 @@ def extract_map(world_path, output_path):
         if name_elem is not None and pose_elem is not None:
             name = name_elem.text.strip()
             pose_text = pose_elem.text.strip()
-            # pose is "x y z roll pitch yaw"
             parts = pose_text.split()
             if len(parts) >= 6:
-                x = float(parts[0])
-                y = float(parts[1])
-                z = float(parts[2])
-                roll = float(parts[3])
-                pitch = float(parts[4])
-                yaw = float(parts[5])
-                
                 semantic_map[name] = {
-                    "position": {"x": x, "y": y, "z": z},
-                    "orientation": {"roll": roll, "pitch": pitch, "yaw": yaw}
+                    "position": {"x": float(parts[0]), "y": float(parts[1]), "z": float(parts[2])},
+                    "orientation": {"roll": float(parts[3]), "pitch": float(parts[4]), "yaw": float(parts[5])},
+                    "size": {"dx": 0.0, "dy": 0.0, "dz": 0.0} # Default for includes
                 }
                 
-    # Also extract light sources or other models if necessary, but includes cover most objects
+    # Extract inline models and their geometries
+    for model in root.findall(".//model"):
+        name = model.get("name")
+        pose_elem = model.find("pose")
+        
+        if name and pose_elem is not None:
+            pose_text = pose_elem.text.strip()
+            parts = pose_text.split()
+            if len(parts) >= 6:
+                dx, dy, dz = 0.0, 0.0, 0.0
+                
+                # Attempt to find geometry
+                geom = model.find(".//geometry")
+                if geom is not None:
+                    box = geom.find("box/size")
+                    cylinder_len = geom.find("cylinder/length")
+                    cylinder_rad = geom.find("cylinder/radius")
+                    
+                    if box is not None:
+                        sparts = box.text.strip().split()
+                        if len(sparts) >= 3:
+                            dx, dy, dz = float(sparts[0]), float(sparts[1]), float(sparts[2])
+                    elif cylinder_len is not None and cylinder_rad is not None:
+                        dz = float(cylinder_len.text.strip())
+                        rad = float(cylinder_rad.text.strip())
+                        dx, dy = rad * 2, rad * 2
+
+                semantic_map[name] = {
+                    "position": {"x": float(parts[0]), "y": float(parts[1]), "z": float(parts[2])},
+                    "orientation": {"roll": float(parts[3]), "pitch": float(parts[4]), "yaw": float(parts[5])},
+                    "size": {"dx": dx, "dy": dy, "dz": dz}
+                }
     
     # Make sure output directory exists
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
