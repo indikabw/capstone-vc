@@ -92,7 +92,7 @@ def generate_launch_description():
             '-topic', 'robot_description',
             '-x', '-1.52',
             '-y', '-2.0',
-            '-z', '0.1',
+            '-z', '0.01',
             '-Y', '3.14159',
         ],
         parameters=[{'use_sim_time': True}],

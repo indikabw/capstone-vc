@@ -372,9 +372,9 @@ class ReasoningNode(Node):
         j1 = math.atan2(local_y, local_x)
         r = math.sqrt(local_x**2 + local_y**2)
         
-        joints_pre = self.solve_ik_planar(r - 0.06, local_z, alpha=pitch_angle)
-        joints_grasp = self.solve_ik_planar(r - 0.02, local_z, alpha=pitch_angle)
-        joints_lift = self.solve_ik_planar(r - 0.02, local_z + 0.15, alpha=pitch_angle)
+        joints_pre = self.solve_ik_planar(r - 0.03, local_z, alpha=pitch_angle)
+        joints_grasp = self.solve_ik_planar(r + 0.02, local_z, alpha=pitch_angle)
+        joints_lift = self.solve_ik_planar(r + 0.02, local_z + 0.15, alpha=pitch_angle)
         
         return j1, joints_pre, joints_grasp, joints_lift
 
@@ -430,7 +430,7 @@ class ReasoningNode(Node):
         
         # 4. Close gripper
         self.get_logger().info("Closing gripper")
-        self.execute_moveit_joints('gripper', gripper_joints, [0.0])
+        self.execute_moveit_joints('gripper', gripper_joints, [-0.008])
         time.sleep(1.0)
         
         # 5. Lift straight up
