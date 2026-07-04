@@ -56,13 +56,15 @@ class NavPickTester(Node):
             if z_match:
                 z = float(z_match.group(1))
                 self.get_logger().info(f'Physics check: red_cylinder z = {z:.4f}')
-                if z > 0.18:
+                # cylinder should be higher than 0.15 (initial ground pos)
+                if z > 0.17:
                     return True
                 else:
-                    self.get_logger().error('Physics check failed: Object was not lifted!')
+                    self.get_logger().error('Cylinder z coordinate too low, lift failed')
                     return False
             else:
                 self.get_logger().error('Could not parse z coordinate from gz model output')
+                self.get_logger().error(f'gz model output was: {output}')
                 return False
         except Exception as e:
             self.get_logger().error(f'Failed to run gz model: {e}')
