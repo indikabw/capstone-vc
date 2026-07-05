@@ -93,7 +93,7 @@ def generate_launch_description():
             '-x', '-1.52',
             '-y', '-2.0',
             '-z', '0.01',
-            '-Y', '3.14159',
+            '-Y', '3.14',
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'

@@ -35,10 +35,10 @@ if 'GEMINI_API_KEY' not in os.environ:
 
 # --- Watchdog timeouts (seconds) ---
 NAV_ACCEPT_TIMEOUT_SEC = 10.0
-NAV_RESULT_TIMEOUT_SEC = 240.0
+NAV_RESULT_TIMEOUT_SEC = 600.0
 MOVEIT_ACCEPT_TIMEOUT_SEC = 10.0
 MOVEIT_RESULT_TIMEOUT_SEC = 60.0
-TASK_TIMEOUT_SEC = 600.0
+TASK_TIMEOUT_SEC = 1200.0
 
 # --- Deterministic visual servo tuning ---
 CAMERA_WIDTH_PX = 1280
@@ -139,19 +139,16 @@ class ReasoningNode(Node):
       reliably. The grasp height and approach are computed for you; pass pitch_angle=1.57.
 
     WORKFLOW (follow in order, once each unless a step tells you to retry):
-    1. Positioning: if the incoming instruction says the robot is already positioned correctly and to not
-       navigate, skip to step 2. Otherwise call `navigate_and_face_tool` to stand ~0.30-0.35m from the
-       object, facing it.
+    1. Positioning: You are already positioned correctly. Do not navigate.
     2. VETO CHECK: call `check_grasp_feasibility_tool(object_id, pitch_angle=1.57)`. If it reports the object
-       is out of reach, move strictly closer with `navigate_and_face_tool` and retry (at most 3 times). If it
-       still fails, report honest failure and stop.
+       is out of reach, report honest failure and stop.
     3. Once feasibility passes, call `execute_grasp_tool(object_id, pitch_angle=1.57)` exactly once. This runs
        the entire atomic grasp (open, hover, descend, close, lift, retreat). No other arm tools are needed.
     4. Call `verify_grasp_tool(object_id)` to visually confirm the object is held and lifted. Report SUCCESS
        only if verification is POSITIVE. If it is NEGATIVE or inconclusive, report honest failure - never
        claim success the camera does not confirm.
     """,
-            tools=[self.get_nearby_objects_tool, self.navigate_and_face_tool, self.check_grasp_feasibility_tool, self.execute_grasp_tool, self.verify_grasp_tool, self.place_tool]
+            tools=[self.get_nearby_objects_tool, self.check_grasp_feasibility_tool, self.execute_grasp_tool, self.verify_grasp_tool, self.place_tool]
         )
 
         self.agent = Agent(
