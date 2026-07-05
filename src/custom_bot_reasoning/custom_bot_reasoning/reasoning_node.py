@@ -2,13 +2,15 @@ import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionServer, ActionClient
 from rclpy.callback_groups import ReentrantCallbackGroup
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, JointState
 from custom_bot_interfaces.action import ReasoningTask
 from nav2_msgs.action import NavigateToPose
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import MotionPlanRequest, Constraints, JointConstraint, PositionConstraint, OrientationConstraint, BoundingVolume
 from geometry_msgs.msg import Point, Pose, Quaternion
 from shape_msgs.msg import SolidPrimitive
+from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
+from builtin_interfaces.msg import Duration
 from cv_bridge import CvBridge
 from tf2_ros import TransformException
 from tf2_ros.buffer import Buffer
@@ -63,9 +65,11 @@ class ReasoningNode(Node):
         self.tf_listener = TransformListener(self.tf_buffer, self)
         self.latest_image = None
         self.image_lock = threading.Lock()
-        
+        self.latest_joint_states = {}
+        self.joint_lock = threading.Lock()
+
         self.callback_group = ReentrantCallbackGroup()
-        
+
         self.image_sub = self.create_subscription(
             Image,
             '/camera/image_raw',
@@ -73,6 +77,20 @@ class ReasoningNode(Node):
             10,
             callback_group=self.callback_group
         )
+
+        self.joint_sub = self.create_subscription(
+            JointState,
+            '/joint_states',
+            self.joint_states_callback,
+            10,
+            callback_group=self.callback_group
+        )
+
+        # Direct gripper command publisher. MoveIt-planned gripper moves execute a trajectory but do not
+        # reliably actuate the fingers in this Gazebo setup (the gripper joint never appears in /joint_states
+        # and grasps never make contact), so the gripper is commanded straight to its controller instead.
+        self.gripper_pub = self.create_publisher(
+            JointTrajectory, '/gripper_controller/joint_trajectory', 10)
         
         self._action_server = ActionServer(
             self,
@@ -110,34 +128,30 @@ class ReasoningNode(Node):
             model="gemini-2.5-pro",
             description="Executes spatial reasoning and collision-aware robot trajectories. Use this to safely move the robot.",
             instruction="""
-    You are the Spatial Critic Agent. The Semantic Planner will give you high-level intents.
-    Your job is to ground these intents into safe, feasible robot movements.
+    You are the Spatial Critic Agent. The Semantic Planner gives you a high-level intent; you ground it
+    into a safe, validated grasp. Reason about the grasp STRATEGY once, then execute a single atomic grasp.
+    Do NOT search grasp heights or approach angles by trial and error, and do NOT run any per-step visual
+    alignment loop - the object pose is already known and the grasp height is computed for you.
 
-    CRITICAL WORKFLOW for Picking Objects:
-    Instead of executing a blind grasp, you MUST use the following sequence:
-    1. If the incoming instruction explicitly states the robot is already positioned correctly and
-       tells you not to navigate, skip straight to step 2. Otherwise, FIRST navigate to a safe pose
-       near the object using `navigate_and_face_tool` before checking feasibility.
-       - The arm is mounted well above the ground, so reaching a LOW grasp_z (near the ground) consumes most
-         of the arm's 0.37m reach budget vertically, leaving very little horizontal budget. For any grasp_z
-         below ~0.2m, stage the robot so its base is within ~0.25m of the object's (x, y) position - closer
-         than you would for a normal "safe distance" stop. If feasibility keeps failing as 'out of reach' at
-         a given distance, your next navigation attempt MUST move strictly closer, not to a similar or farther
-         distance.
-    2. Then, validate kinematics using `check_grasp_feasibility_tool(object_id, grasp_z, pitch_angle)`.
-       - Try pitch_angle=1.57 (horizontal) or 3.14 (top-down).
-       - If it returns 'out of reach', navigate strictly closer (see above) and retry, up to 3 times, before
-         reporting failure.
-    3. Once feasible, move to the hover position: call `hover_and_open_tool(object_id, grasp_z, pitch_angle)`.
-    4. Call `visual_servo_align_tool(object_id)` exactly once. This runs a deterministic, code-only
-       alignment loop (no further tool calls needed from you) and returns either:
-       - "Alignment converged..." - proceed to step 5.
-       - "Alignment failed: object not visible..." or "did not converge..." - navigate the base to a
-         better vantage point (`navigate_and_face_tool`), then re-run from step 3.
-    5. Call `adjust_pose_tool(dx=0.0, dy=0.0, dz=-0.1)` (or whatever descent is needed based on your hover z and target z) to lower the arm onto the object.
-    6. Call `close_gripper_and_lift_tool()` to complete the pick!
+    GRASP STRATEGY:
+    - The grasp is performed TOP-DOWN: the gripper points straight down, descends over the object's center so
+      its open jaws pass around the body, then closes and lifts. This is the approach this arm reaches most
+      reliably. The grasp height and approach are computed for you; pass pitch_angle=1.57.
+
+    WORKFLOW (follow in order, once each unless a step tells you to retry):
+    1. Positioning: if the incoming instruction says the robot is already positioned correctly and to not
+       navigate, skip to step 2. Otherwise call `navigate_and_face_tool` to stand ~0.30-0.35m from the
+       object, facing it.
+    2. VETO CHECK: call `check_grasp_feasibility_tool(object_id, pitch_angle=1.57)`. If it reports the object
+       is out of reach, move strictly closer with `navigate_and_face_tool` and retry (at most 3 times). If it
+       still fails, report honest failure and stop.
+    3. Once feasibility passes, call `execute_grasp_tool(object_id, pitch_angle=1.57)` exactly once. This runs
+       the entire atomic grasp (open, hover, descend, close, lift, retreat). No other arm tools are needed.
+    4. Call `verify_grasp_tool(object_id)` to visually confirm the object is held and lifted. Report SUCCESS
+       only if verification is POSITIVE. If it is NEGATIVE or inconclusive, report honest failure - never
+       claim success the camera does not confirm.
     """,
-            tools=[self.get_nearby_objects_tool, self.navigate_and_face_tool, self.check_grasp_feasibility_tool, self.hover_and_open_tool, self.visual_servo_align_tool, self.adjust_pose_tool, self.close_gripper_and_lift_tool, self.place_tool]
+            tools=[self.get_nearby_objects_tool, self.navigate_and_face_tool, self.check_grasp_feasibility_tool, self.execute_grasp_tool, self.verify_grasp_tool, self.place_tool]
         )
 
         self.agent = Agent(
@@ -150,9 +164,11 @@ class ReasoningNode(Node):
     CRITICAL INSTRUCTIONS:
     1. Use `list_objects_tool` to see all available objects in the environment. Look for keywords matching the user's request.
     2. If asked to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, deduce the area by finding objects that belong there. Calculate the center of the bounding box of these objects.
-    3. Use `get_object_details_tool` to find the exact (x, y, z, yaw, size) of target objects. Use the object's own reported z position as the grasp_z you hand off - do not guess or reuse a value from a previous task.
+    3. Use `get_object_details_tool` to find the exact (x, y, z, yaw, size) of target objects.
     4. Formulate a step-by-step plan for the task.
-    5. Delegate the actual execution of navigation and grasping to the `spatial_critic` sub-agent, passing the object's real (x, y, grasp_z) from step 3 (e.g., "Navigate to a safe spot near (x,y) and pick up '<object_id>' at grasp_z=<its actual reported z>").
+    5. Delegate execution to the `spatial_critic` sub-agent by object_id (e.g., "Pick up '<object_id>'."). The
+       critic computes the grasp height and approach itself - you do not need to specify grasp_z or angles.
+       If the user's instruction says the robot is already positioned and to not navigate, pass that along.
     """,
             tools=[self.list_objects_tool, self.get_object_details_tool],
             sub_agents=[spatial_critic]
@@ -189,6 +205,28 @@ class ReasoningNode(Node):
                 self.latest_image = self.bridge.imgmsg_to_cv2(msg, desired_encoding='bgr8')
             except Exception as e:
                 self.get_logger().error(f'Failed to convert image: {e}')
+
+    def joint_states_callback(self, msg):
+        with self.joint_lock:
+            for name, pos in zip(msg.name, msg.position):
+                self.latest_joint_states[name] = pos
+
+    def _gripper_position(self):
+        """Latest commanded/measured position of the gripper joint, or None if not yet received."""
+        with self.joint_lock:
+            return self.latest_joint_states.get('omx_gripper_left_joint')
+
+    def control_gripper(self, position, settle=1.5):
+        """Command the gripper directly to its controller (bypassing MoveIt), which reliably actuates the
+        fingers in this Gazebo setup. position: joint value (0.019 open ... -0.011 closed)."""
+        msg = JointTrajectory()
+        msg.joint_names = ['omx_gripper_left_joint']
+        pt = JointTrajectoryPoint()
+        pt.positions = [float(position)]
+        pt.time_from_start = Duration(sec=1, nanosec=0)
+        msg.points.append(pt)
+        self.gripper_pub.publish(msg)
+        time.sleep(settle)
 
     def list_objects_tool(self) -> str:
         """Returns a list of all object IDs present in the environment."""
@@ -481,229 +519,222 @@ class ReasoningNode(Node):
         
         j1 = math.atan2(local_y, local_x)
         r = math.sqrt(local_x**2 + local_y**2)
-        
+
+        # Diagnostic: the planar radius, height, and straight-line reach to the grasp point, in the arm base
+        # frame. Logged so the actual required reach can be compared against the arm's usable envelope.
         target_reach = math.sqrt((r - 0.03 + r_offset)**2 + local_z**2)
-        if target_reach > 0.37:
-            raise ValueError(f"Target is physically out of reach. Required reach is {target_reach:.2f}m, but max arm length is 0.37m. The object is either too far away or too high.")
+        self.get_logger().info(f'IK geometry for {object_id}: r={r:.3f} local_z={local_z:.3f} target_reach={target_reach:.3f}')
+        # The hard cap was previously 0.37m, which rejected the floor grasp that commit d1c40a0 physically
+        # performed (the cap was added in d2debd8, after that verified pickup). Relax to the arm's true usable
+        # reach and let the IK solver's own convergence check be the real feasibility gate.
+        if target_reach > 0.42:
+            raise ValueError(f"Target is physically out of reach. Required reach is {target_reach:.2f}m, beyond the arm's usable envelope (~0.42m). Move the base closer to the object.")
         
         joints_pre = self.solve_ik_planar(r - 0.03 + r_offset, local_z, alpha=pitch_angle)
         joints_grasp = self.solve_ik_planar(r + 0.02 + r_offset, local_z, alpha=pitch_angle)
         joints_lift = self.solve_ik_planar(r + 0.02 + r_offset, local_z + 0.15, alpha=pitch_angle)
-        
+
         return j1, joints_pre, joints_grasp, joints_lift
 
-    def check_grasp_feasibility_tool(self, object_id: str, grasp_z: float, pitch_angle: float) -> str:
+    def _map_point_to_arm_frame(self, mx, my, mz):
+        """Express a map-frame point (mx,my,mz) in the arm base (omx_link1) frame, returning (j1, r, local_z)
+        where j1 is the base-rotation azimuth to face it, r the planar radius, and local_z its height."""
+        t = self.tf_buffer.lookup_transform('omx_link1', 'map', rclpy.time.Time())
+        tx, ty, tz = t.transform.translation.x, t.transform.translation.y, t.transform.translation.z
+        qx, qy, qz, qw = t.transform.rotation.x, t.transform.rotation.y, t.transform.rotation.z, t.transform.rotation.w
+        vx, vy, vz = mx, my, mz
+        cx = qy * vz - qz * vy; cy = qz * vx - qx * vz; cz = qx * vy - qy * vx
+        ax = cx + qw * vx; ay = cy + qw * vy; az = cz + qw * vz
+        bx = qy * az - qz * ay; by = qz * ax - qx * az; bz = qx * ay - qy * ax
+        local_x = vx + 2.0 * bx + tx
+        local_y = vy + 2.0 * by + ty
+        local_z = vz + 2.0 * bz + tz
+        return math.atan2(local_y, local_x), math.sqrt(local_x**2 + local_y**2), local_z
+
+    # Correction added to the object-center world z when choosing the IK target height for a top-down grasp,
+    # so the gripper FINGERTIPS (not the wrist) end up at the object body. Calibrated from a measured run:
+    # targeting center+0.08 left the fingertip 0.126m too high, so the net target must be ~0.13m lower.
+    GRIPPER_FINGER_OFFSET = -0.05
+
+    # Radial correction: measured runs showed the gripper center landing ~0.02m beyond the object (overshoot
+    # in reach), so the jaws closed just past it. Pull the planar radius in by this much to center the jaws.
+    GRIPPER_RADIAL_OFFSET = -0.02
+
+    def calculate_topdown_grasp(self, object_id: str):
+        """Top-down grasp poses: the gripper points straight down and descends vertically over the object's
+        center (no radial push that would knock a thin object over). Returns (j1, hover, grip, lift) joint sets.
+        The grip level places the fingertips around the object's center height."""
+        if object_id not in self.sem_map:
+            raise ValueError(f"Object {object_id} not found.")
+        cx = self.sem_map[object_id]['position']['x']
+        cy = self.sem_map[object_id]['position']['y']
+        center_z = float(self.sem_map[object_id]['position']['z'])
+
+        # IK-target (link end) heights, in the arm frame, for each phase. The fingertips sit
+        # GRIPPER_FINGER_OFFSET below the link end, so to put the fingertips at the object center the link end
+        # must be that much higher.
+        j1, r, lz_center = self._map_point_to_arm_frame(cx, cy, center_z)
+        _, _, lz_grip = self._map_point_to_arm_frame(cx, cy, center_z + self.GRIPPER_FINGER_OFFSET)
+        _, _, lz_hover = self._map_point_to_arm_frame(cx, cy, center_z + self.GRIPPER_FINGER_OFFSET + 0.12)
+        _, _, lz_lift = self._map_point_to_arm_frame(cx, cy, center_z + self.GRIPPER_FINGER_OFFSET + 0.18)
+
+        reach = math.sqrt(r**2 + lz_grip**2)
+        self.get_logger().info(f'Top-down IK for {object_id}: r={r:.3f} lz_grip={lz_grip:.3f} reach={reach:.3f}')
+        if reach > 0.42:
+            raise ValueError(f"Top-down target out of reach ({reach:.2f}m). Move the base closer.")
+
+        # alpha=1.57 -> gripper points straight down; radius pulled in by the measured overshoot to center jaws.
+        r_target = r + self.GRIPPER_RADIAL_OFFSET
+        self.get_logger().info(f'Top-down grasp r_target={r_target:.3f} (raw r={r:.3f}, radial_offset={self.GRIPPER_RADIAL_OFFSET})')
+        hover = self.solve_ik_planar(r_target, lz_hover, alpha=1.57)
+        grip = self.solve_ik_planar(r_target, lz_grip, alpha=1.57)
+        lift = self.solve_ik_planar(r_target, lz_lift, alpha=1.57)
+        return j1, hover, grip, lift
+
+    def _grasp_z_for(self, object_id: str) -> float:
+        """The grasp height is the object's own center z from the semantic map. It is computed in code,
+        never chosen by the LLM, so the gripper always closes around the object's body (not its top edge)."""
+        if object_id not in self.sem_map:
+            raise ValueError(f"Object {object_id} not found in the semantic map.")
+        return float(self.sem_map[object_id]['position']['z'])
+
+    def check_grasp_feasibility_tool(self, object_id: str, pitch_angle: float) -> str:
         """
-        Validates if the robot can safely grasp the object at the specified grasp_z height and pitch_angle.
+        Veto check: validates that the object is kinematically reachable for a top-down grasp before any
+        motion. The grasp height is computed automatically from the object's center - you do not choose it.
         Args:
             object_id: The name of the object to grasp.
-            grasp_z: The absolute Z coordinate to grasp at.
-            pitch_angle: The approach angle of the gripper in radians (0.0 is horizontal, -1.57 is top-down).
+            pitch_angle: Kept for interface compatibility; the grasp is performed top-down regardless.
         """
-        self.get_logger().info(f'Tool called: check_grasp_feasibility_tool({object_id}, z={grasp_z}, pitch={pitch_angle})')
+        self.get_logger().info(f'Tool called: check_grasp_feasibility_tool({object_id})')
         try:
-            j1, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(object_id, grasp_z, pitch_angle)
+            j1, hover, grip, lift = self.calculate_topdown_grasp(object_id)
         except Exception as e:
             return f"Feasibility check failed: {e}"
-            
-        if j_pre is None or j_grasp is None or j_lift is None:
-            return "Feasibility check failed: Dynamic IK failed to converge to a reachable solution."
-            
-        return "Feasibility check passed. The grasp is kinematically valid. You may now call hover_and_open_tool with these exact parameters."
+        if hover is None or grip is None or lift is None:
+            return "Feasibility check failed: IK did not converge to a reachable top-down solution."
+        return "Feasibility check passed. The top-down grasp is kinematically valid. Call execute_grasp_tool now."
 
-    def hover_and_open_tool(self, object_id: str, grasp_z: float, pitch_angle: float) -> str:
-        """Moves the arm to a hover position directly above the object (grasp_z + 0.15m) and opens the gripper."""
-        self.get_logger().info(f'Tool called: hover_and_open_tool({object_id})')
-        try:
-            # We hover 0.15m above the intended grasp_z
-            j1, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(object_id, grasp_z + 0.15, pitch_angle)
-            if j_grasp is None: return "Hover IK failed."
-            
-            # Store base joint1 and current grasp pose for visual_servo_align_tool / adjust_pose_tool
-            self.current_grasp_params = {'object_id': object_id, 'z': grasp_z + 0.15, 'pitch': pitch_angle, 'r_offset': 0.0, 'j1': j1, 'j1_offset': 0.0}
-
-            arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
-            gripper_joints = ['omx_gripper_left_joint']
-
-            self.execute_moveit_joints('gripper', gripper_joints, [0.019])
-            time.sleep(1.0)
-
-            ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(j_grasp))
-            if not ok: return f"Failed to hover: {msg}"
-
-            return "Successfully moved to hover position and opened gripper. You can now call visual_servo_align_tool."
-        except Exception as e:
-            return f"Hover failed: {e}"
-
-    def _find_object_pixel_bbox(self, img, object_id: str):
-        """Segments the object in the image via HSV thresholding and returns (cx, cy, apparent_diameter_px) of the
-        largest matching contour, or None if not found. Currently tuned for red objects only (the only color used
-        in this scenario) - see docs/agentic_reasoning_evaluation.md for the color-generalization limitation."""
-        import cv2
-        import numpy as np
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        lower1, upper1 = np.array([0, 120, 70]), np.array([10, 255, 255])
-        lower2, upper2 = np.array([170, 120, 70]), np.array([180, 255, 255])
-        mask = cv2.inRange(hsv, lower1, upper1) | cv2.inRange(hsv, lower2, upper2)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
-        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-        if not contours:
-            return None
-        largest = max(contours, key=cv2.contourArea)
-        if cv2.contourArea(largest) < SERVO_MIN_CONTOUR_AREA_PX:
-            return None
-        x, y, w, h = cv2.boundingRect(largest)
-        return (x + w / 2.0, y + h / 2.0, float(max(w, h)))
-
-    def visual_servo_align_tool(self, object_id: str) -> str:
+    def execute_grasp_tool(self, object_id: str, pitch_angle: float) -> str:
         """
-        Deterministically aligns the gripper over the object using onboard camera feedback - no LLM calls
-        inside the loop. Segments the object via HSV color thresholding, estimates its lateral pixel offset
-        and apparent size, and drives a bounded proportional controller (fixed gain, clamped per-step
-        correction, hard iteration cap) until the estimated lateral/depth error is below the 0.02m tolerance
-        or the iteration budget is exhausted. Call this once after hover_and_open_tool; it runs the full
-        alignment loop internally and returns only the final outcome.
+        Executes the full atomic grasp as one validated sequence - no camera in the loop, no per-step
+        perturbation. The gripper points straight down and descends vertically over the object's center so
+        the open jaws pass around the body, then closes and lifts straight up (a top-down grasp - it does not
+        push sideways, which would knock a thin object over). The grasp height is computed in code. Call this
+        once, after check_grasp_feasibility_tool passes; then call verify_grasp_tool to confirm the result.
+        Args:
+            object_id: The name of the object to grasp.
+            pitch_angle: Kept for interface compatibility; the grasp is performed top-down regardless.
         """
-        self.get_logger().info(f'Tool called: visual_servo_align_tool({object_id})')
-        if not hasattr(self, 'current_grasp_params'):
-            return "Error: You must call hover_and_open_tool before aligning."
-
-        obj = self.current_grasp_params['object_id']
-        pitch = self.current_grasp_params['pitch']
-        misses = 0
-        reference_diameter_px = None
-
-        for iteration in range(SERVO_MAX_ITERS):
-            img = None
-            with self.image_lock:
-                if self.latest_image is not None:
-                    img = self.latest_image.copy()
-
-            if img is None:
-                return "Alignment aborted: no camera image available."
-
-            found = self._find_object_pixel_bbox(img, obj)
-            if found is None:
-                misses += 1
-                if misses >= 2:
-                    return ("Alignment failed: object not visible in the onboard camera after hover. "
-                            "Consider navigating the base to a better vantage point and re-hovering.")
-                time.sleep(SERVO_SETTLE_SEC)
-                continue
-            misses = 0
-
-            px, py, apparent_diameter_px = found
-            real_diameter_m = self.sem_map.get(obj, {}).get('size', {}).get('dx', 0.03) or 0.03
-
-            depth_m = (real_diameter_m * CAMERA_FOCAL_PX) / apparent_diameter_px
-            lateral_error_m = (px - CAMERA_WIDTH_PX / 2.0) * depth_m / CAMERA_FOCAL_PX
-            self.last_measured_depth_m = depth_m
-
-            if reference_diameter_px is None:
-                reference_diameter_px = apparent_diameter_px
-                depth_error_m = 0.0
-            else:
-                reference_depth_m = (real_diameter_m * CAMERA_FOCAL_PX) / reference_diameter_px
-                depth_error_m = depth_m - reference_depth_m
-
-            if abs(lateral_error_m) < SERVO_ALIGN_TOLERANCE_M and abs(depth_error_m) < SERVO_ALIGN_TOLERANCE_M:
-                return (f"Alignment converged after {iteration + 1} iteration(s): "
-                        f"lateral_error={lateral_error_m:.3f}m, depth_error={depth_error_m:.3f}m. "
-                        f"You may now call adjust_pose_tool(dx=0, dy=0, dz=<descent>) to lower and grasp.")
-
-            dtheta = max(-SERVO_MAX_J1_STEP_RAD, min(SERVO_MAX_J1_STEP_RAD, SERVO_LATERAL_GAIN * lateral_error_m / max(depth_m, 0.05)))
-            depth_step = max(-SERVO_MAX_DEPTH_STEP_M, min(SERVO_MAX_DEPTH_STEP_M, SERVO_DEPTH_GAIN * depth_error_m))
-
-            new_j1_offset = self.current_grasp_params['j1_offset'] + dtheta
-            new_j1_offset = max(-SERVO_MAX_J1_OFFSET_RAD, min(SERVO_MAX_J1_OFFSET_RAD, new_j1_offset))
-            new_r_offset = self.current_grasp_params['r_offset'] + depth_step
-
-            self.current_grasp_params['j1_offset'] = new_j1_offset
-            self.current_grasp_params['r_offset'] = new_r_offset
-
-            try:
-                j1_new, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(
-                    obj, self.current_grasp_params['z'], pitch, r_offset=new_r_offset)
-                arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
-                ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1_new + new_j1_offset] + list(j_grasp))
-                if not ok:
-                    return f"Alignment step failed while correcting pose: {msg}"
-            except Exception as e:
-                return f"Alignment step error: {e}"
-
-            time.sleep(SERVO_SETTLE_SEC)
-
-        return (f"Alignment did not converge within {SERVO_MAX_ITERS} iterations "
-                f"(last lateral_error={lateral_error_m:.3f}m, depth_error={depth_error_m:.3f}m). "
-                f"Consider navigating the base to a better vantage point and retrying.")
-
-    def adjust_pose_tool(self, dx: float, dy: float, dz: float) -> str:
-        """Adjusts the arm position by the given dx (lateral), dy (depth/reach), and dz (height), in meters.
-        Intended for the final controlled descent after visual_servo_align_tool reports convergence."""
-        self.get_logger().info(f'Tool called: adjust_pose_tool(dx={dx}, dy={dy}, dz={dz})')
-        if not hasattr(self, 'current_grasp_params'):
-            return "Error: You must call hover_and_open_tool before adjusting."
-
-        obj = self.current_grasp_params['object_id']
-        current_z = self.current_grasp_params['z']
-        pitch = self.current_grasp_params['pitch']
-        current_r_offset = self.current_grasp_params['r_offset']
-        current_j1_offset = self.current_grasp_params.get('j1_offset', 0.0)
-
-        # Convert the requested lateral shift (meters) into a joint1 rotation using the last depth
-        # estimate from visual_servo_align_tool, falling back to a conservative mid-range depth.
-        depth_for_conversion = getattr(self, 'last_measured_depth_m', 0.2)
-        dtheta = dx / max(depth_for_conversion, 0.05)
-        new_j1_offset = max(-SERVO_MAX_J1_OFFSET_RAD, min(SERVO_MAX_J1_OFFSET_RAD, current_j1_offset + dtheta))
-
-        new_r_offset = current_r_offset + dy
-        new_z = current_z + dz
-
-        self.current_grasp_params['z'] = new_z
-        self.current_grasp_params['r_offset'] = new_r_offset
-        self.current_grasp_params['j1_offset'] = new_j1_offset
-
-        try:
-            j1_new, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(obj, new_z, pitch, r_offset=new_r_offset)
-
-            arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
-            ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1_new + new_j1_offset] + list(j_grasp))
-            if not ok: return f"Adjustment failed: {msg}"
-
-            return f"Successfully adjusted pose. New Z is {new_z}."
-        except Exception as e:
-            return f"Adjustment error: {e}"
-
-    def close_gripper_and_lift_tool(self) -> str:
-        """Closes the gripper to grasp the object and lifts the arm back to the home position."""
-        self.get_logger().info('Tool called: close_gripper_and_lift_tool()')
-        if not hasattr(self, 'current_grasp_params'):
-            return "Error: No grasp context. Did you hover?"
-            
-        gripper_joints = ['omx_gripper_left_joint']
         arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
-        
-        self.execute_moveit_joints('gripper', gripper_joints, [-0.008])
-        time.sleep(1.0)
-        
+        gripper_joints = ['omx_gripper_left_joint']
+        self.get_logger().info(f'Tool called: execute_grasp_tool({object_id})')
+
         try:
-            # Lift
-            j1_new, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(
-                self.current_grasp_params['object_id'],
-                self.current_grasp_params['z'] + 0.15,
-                self.current_grasp_params['pitch'],
-                r_offset=self.current_grasp_params['r_offset']
-            )
-            j1_offset = self.current_grasp_params.get('j1_offset', 0.0)
-            self.execute_moveit_joints('arm', arm_joints, [j1_new + j1_offset] + list(j_lift))
-            time.sleep(1.0)
+            j1, hover, grip, lift = self.calculate_topdown_grasp(object_id)
         except Exception as e:
-            self.get_logger().error(f"Lift IK failed: {e}")
-        
-        # Retreat to Home
+            return f"Execution failed: {e}"
+        if hover is None or grip is None or lift is None:
+            return "Execution failed: IK did not converge."
+
+        # 1. Open the gripper fully (direct controller command)
+        self.control_gripper(0.019)
+
+        # 2. Hover directly above the object center, gripper pointing down
+        self.get_logger().info("Moving to hover pose above object")
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(hover))
+        if not ok:
+            return f"Failed to reach hover: {msg}"
+        time.sleep(1.0)
+
+        # 3. Descend vertically so the open jaws pass around the object body
+        self.get_logger().info("Descending onto object")
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(grip))
+        if not ok:
+            return f"Failed to descend: {msg}"
+        time.sleep(1.0)
+
+        # Diagnostic: measure where the gripper fingertip actually is in map frame vs the object, so any
+        # residual grasp offset can be read directly and corrected instead of guessed.
+        try:
+            op = self.sem_map[object_id]['position']
+            for link in ('omx_gripper_left_link', 'omx_link5'):
+                gt = self.tf_buffer.lookup_transform('map', link, rclpy.time.Time())
+                gx, gy, gz = gt.transform.translation.x, gt.transform.translation.y, gt.transform.translation.z
+                self.get_logger().info(
+                    f'GRIP-OFFSET {link}: gripper=({gx:.3f},{gy:.3f},{gz:.3f}) object=({op["x"]:.3f},{op["y"]:.3f},{op["z"]:.3f}) '
+                    f'dx={op["x"]-gx:+.3f} dy={op["y"]-gy:+.3f} dz={op["z"]-gz:+.3f}')
+        except Exception as e:
+            self.get_logger().warn(f'Grip-offset TF lookup failed: {e}')
+
+        # 4. Close the gripper around the object body (direct controller command; full close for a firm hold)
+        self.get_logger().info("Closing gripper")
+        self.control_gripper(-0.011, settle=2.0)
+
+        # Code-level grip check: if the gripper settled well above its fully-closed limit (-0.011), it is
+        # blocked by the object (holding something); if it reached the limit it closed on empty air.
+        grip_pos = self._gripper_position()
+        grip_note = ""
+        if grip_pos is not None:
+            if grip_pos > -0.0105:
+                grip_note = f" Gripper settled at {grip_pos:.4f} (blocked by object -> likely holding it)."
+            else:
+                grip_note = f" WARNING: gripper closed to {grip_pos:.4f} (empty air -> likely missed the object)."
+
+        # 5. Lift straight up
+        self.get_logger().info("Lifting object")
+        ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(lift))
+        if not ok:
+            return f"Failed to lift: {msg}.{grip_note}"
+        time.sleep(1.0)
+
+        # 6. Retreat to home with the object
         self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
         time.sleep(2.0)
-        return "Successfully gripped and lifted the object."
+        return (f"Grasp sequence executed for {object_id}.{grip_note} "
+                f"Now call verify_grasp_tool({object_id}) to visually confirm the object is held and lifted.")
+
+    def verify_grasp_tool(self, object_id: str) -> str:
+        """
+        Vision-only verification (no metric estimation): samples the onboard camera and asks the vision model
+        a yes/no question about whether the object is currently held in the gripper and lifted off its surface.
+        Use this after execute_grasp_tool. Only report task success if this returns held=true.
+        """
+        self.get_logger().info(f'Tool called: verify_grasp_tool({object_id})')
+        img = None
+        with self.image_lock:
+            if self.latest_image is not None:
+                img = self.latest_image.copy()
+        if img is None:
+            return "Verification inconclusive: no camera image available. Do not claim success."
+
+        import cv2
+        _, buffer = cv2.imencode('.jpg', img)
+        image_bytes = buffer.tobytes()
+        try:
+            from google import genai
+            from google.genai import types
+            client = genai.Client()
+            prompt = (
+                f"This is a robot's onboard camera view immediately after a pick-up attempt of '{object_id}'. "
+                f"Is the object currently held in the robot's gripper and lifted off its resting surface? "
+                f"Respond with strictly a JSON object and nothing else: "
+                f"{{\"held\": true or false, \"reason\": \"one short phrase\"}}."
+            )
+            resp = client.models.generate_content(
+                model='gemini-2.5-pro',
+                contents=[types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'), prompt]
+            )
+            text = resp.text.strip().replace('```json', '').replace('```', '')
+            parsed = json.loads(text)
+            held = bool(parsed.get("held", False))
+            reason = str(parsed.get("reason", ""))
+            if held:
+                return f"Verification POSITIVE: the object appears held and lifted ({reason}). You may report success."
+            return f"Verification NEGATIVE: the object does not appear held/lifted ({reason}). Report honest failure - do not claim success."
+        except Exception as e:
+            self.get_logger().error(f"Vision verification failed: {e}")
+            return "Verification inconclusive: the vision model could not be reached. Do not claim success."
 
 
     def place_tool(self, x: float, y: float, z: float) -> str:

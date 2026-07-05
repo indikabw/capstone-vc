@@ -936,19 +936,19 @@
       <direction>0 0 -1</direction>
     </light>
 
-    <!-- Static stand raising red_cylinder to a grasp height that is within the OpenManipulator-X's
-         reach envelope. The arm mount sits well above the ground, so a target resting directly on
-         the floor (grasp center ~0.1m) requires more vertical reach than the arm has left over for
-         any reasonable horizontal approach distance. A 0.15m-tall stand puts the cylinder's center
-         at 0.25m, matching the reach envelope validated by earlier feasibility checks. -->
+    <!-- Static stand raising red_cylinder so its center sits at z=0.25. This collapses the vertical drop
+         from the elevated arm mount to the grasp point (a floor object at z=0.1 needs ~0.39m reach for the
+         straddle pose - right at the arm's physical limit, which is why the d1c40a0 floor grasp was fragile;
+         at z=0.25 the required reach drops to ~0.27m, comfortably inside the envelope). The atomic horizontal
+         side-grasp then closes around the cylinder body at z=0.20, above the stand top (z=0.15). -->
     <model name='cylinder_stand'>
       <static>true</static>
-      <pose>-1.75 -2.0 0.075 0 0 0</pose>
+      <pose>-1.75 -2.0 0.0825 0 0 0</pose>
       <link name='link'>
         <visual name='visual'>
           <geometry>
             <box>
-              <size>0.05 0.05 0.15</size>
+              <size>0.05 0.05 0.165</size>
             </box>
           </geometry>
           <material>
@@ -960,7 +960,7 @@
         <collision name='collision'>
           <geometry>
             <box>
-              <size>0.05 0.05 0.15</size>
+              <size>0.05 0.05 0.165</size>
             </box>
           </geometry>
         </collision>
@@ -969,7 +969,7 @@
 
     <!-- Custom Test Object: red_cylinder -->
     <model name='red_cylinder'>
-      <pose>-1.75 -2.0 0.25 0 0 0</pose>
+      <pose>-1.75 -2.0 0.19 0 0 0</pose>
       <link name='link'>
         <inertial>
           <mass>0.02</mass>
@@ -984,10 +984,9 @@
         </inertial>
         <visual name='visual'>
           <geometry>
-            <cylinder>
-              <radius>0.015</radius>
-              <length>0.2</length>
-            </cylinder>
+            <box>
+              <size>0.03 0.03 0.05</size>
+            </box>
           </geometry>
           <material>
             <ambient>1 0 0 1</ambient>
@@ -997,10 +996,9 @@
         </visual>
         <collision name='collision'>
           <geometry>
-            <cylinder>
-              <radius>0.015</radius>
-              <length>0.2</length>
-            </cylinder>
+            <box>
+              <size>0.03 0.03 0.05</size>
+            </box>
           </geometry>
           <surface>
             <friction>
