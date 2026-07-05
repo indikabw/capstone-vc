@@ -51,11 +51,10 @@ To avoid blocking the developer's chat session or leaving dangling asynchronous 
 *   The VM workspace often contains third-party ROS 2 source packages (like `navigation2`) or binary artifacts in `src/` that do not exist in the local Mac workspace. 
 *   When syncing code from the local Mac to the VM, **NEVER** use the `--delete` flag with `rsync` unless explicitly told to. Doing so will obliterate the remote-only source code and cause catastrophic build failures.
 
-### 3. Disabling `-Werror` on Lyrical (Ubuntu 26.04 / GCC 15)
-*   The Lyrical distribution uses GCC 15, which introduces many strict warnings (e.g., `deprecated-declarations`, `free-nonheap-object`).
-*   Many ROS 2 packages enforce `-Werror` (warnings as errors) via `ament_lint_auto`. When building unreleased packages from source, this guarantees a build failure.
-*   **Always globally disable warnings as errors** when building third-party code: pass `--cmake-args -DAMENT_CMAKE_CXX_WARNINGS_AS_ERRORS=OFF` to your `colcon build` command.
-*   If a package explicitly hardcodes `-Werror` in a `CMakeLists.txt` or a `nav2_package.cmake` macro, you must use a tool (like `sed`) to physically strip it from those files before compiling.
+### 3. Always Build via `scripts/colcon_build.sh` — Never Call `colcon build` Directly
+*   Run `bash scripts/colcon_build.sh` (optionally with `--packages-select <pkg...>`) instead of raw `colcon build`. It bakes in two environment workarounds so you don't have to rediscover them:
+    1. **`-Werror` on Lyrical (Ubuntu 26.04 / GCC 15)**: GCC 15 introduces strict warnings (e.g., `deprecated-declarations`, `free-nonheap-object`) that many ROS 2 packages' `ament_lint_auto` treats as errors. The wrapper always passes `--cmake-args -DAMENT_CMAKE_CXX_WARNINGS_AS_ERRORS=OFF`. If a package explicitly hardcodes `-Werror` in its own `CMakeLists.txt`, strip it with `sed` first — that's still your responsibility.
+    2. **Missing `ament_target_dependencies` macro**: some vendored packages (`irobot_create_nodes`, `turtlebot4_node`) fail to configure with `Unknown CMake command "ament_target_dependencies"` even though the real ROS package providing it is installed. The wrapper points `CMAKE_PREFIX_PATH` at this repo's `cmake_fix/` directory (a drop-in config for it) to fix this. **Do NOT patch this by editing the vendored submodules' `CMakeLists.txt` files instead** — that was already tried, touched two unrelated submodules, and was unnecessary; the non-invasive fix already exists in `cmake_fix/`.
 
 ## Avoiding Script Redundancy
 

@@ -5,7 +5,7 @@ echo "Starting 1 iteration of new spawn experiment" > $LOG_FILE
 
 # Ensure the modified launch files are built
 source /opt/ros/lyrical/setup.bash
-colcon build --packages-select custom_bot_gazebo custom_bot_reasoning --cmake-args -DAMENT_CMAKE_CXX_WARNINGS_AS_ERRORS=OFF
+bash scripts/colcon_build.sh --packages-select custom_bot_gazebo custom_bot_reasoning
 
 echo "======================================" | tee -a $LOG_FILE
 echo "Running iteration 1..." | tee -a $LOG_FILE

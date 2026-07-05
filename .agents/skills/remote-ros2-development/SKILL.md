@@ -40,8 +40,14 @@ All ROS 2 commands must be wrapped in an SSH call targeting the VM. Because the 
 
 *(Replace `<YOUR_COMMAND_HERE>` with the actual `colcon build` or `ros2 launch` command).*
 
-**COMPILATION WARNING (GCC 15 on Lyrical):** 
-When compiling third-party code like Navigation2, GCC 15 emits strict warnings that ROS 2 linters treat as errors (via `-Werror`). You MUST always append `--cmake-args -DAMENT_CMAKE_CXX_WARNINGS_AS_ERRORS=OFF` to your `colcon build` commands. If packages manually hardcode `-Werror` inside their CMake macros, you must strip them out using `sed` before compiling.
+**BUILDING (CRITICAL — always use the wrapper script):**
+Never invoke `colcon build` directly. Always run `bash scripts/colcon_build.sh` (optionally with `--packages-select <pkg...>`) instead, e.g.:
+
+`ssh indikabw@172.16.187.128 "source /opt/ros/lyrical/setup.bash && cd ~/capstone-vc && bash scripts/colcon_build.sh --packages-select custom_bot_reasoning"`
+
+This wrapper already bakes in the two known environment workarounds for this VM:
+1. **Missing `ament_target_dependencies` macro**: some vendored packages (`irobot_create_nodes`, `turtlebot4_node`) fail to configure with `CMake Error ... Unknown CMake command "ament_target_dependencies"` even though `ros-lyrical-ament-cmake-target-dependencies` is installed. The fix is to point `CMAKE_PREFIX_PATH` at the repo's own `cmake_fix/` directory (a drop-in `ament_cmake_target_dependencies` CMake config) — the wrapper does this automatically. **Do NOT "fix" this by editing the vendored submodules' `CMakeLists.txt` files** (e.g. adding a local reimplementation of the macro). That was tried once, required touching two separate submodules, diverged from the real macro's behavior, and was completely unnecessary — this exact class of failure had already been solved non-invasively via `cmake_fix/`.
+2. **GCC 15 `-Werror` on third-party code**: the wrapper always passes `--cmake-args -DAMENT_CMAKE_CXX_WARNINGS_AS_ERRORS=OFF`. If a package manually hardcodes `-Werror` inside its own CMake macros, strip it with `sed` before compiling — that's a legitimate per-package exception, unlike the `ament_target_dependencies` case above.
 
 ## 5. Launching GUI Applications (Gazebo, RViz)
 If you are launching a node that requires a graphical user interface (e.g., Gazebo via `sim.launch.py`, or RViz via Navigation 2):
