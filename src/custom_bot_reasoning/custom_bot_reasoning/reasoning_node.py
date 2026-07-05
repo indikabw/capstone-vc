@@ -94,7 +94,8 @@ class ReasoningNode(Node):
     1. For picking up objects, you must first validate the kinematics.
     2. Use `check_grasp_feasibility_tool(object_id, grasp_z, pitch_angle)`.
        - Try pitch_angle=0.0 (horizontal approach) first.
-       - If it fails, try adjusting the pitch_angle (e.g., -0.5, or -1.57 for top-down) or the grasp_z slightly.
+       - If it fails due to convergence or joint limits, try adjusting the pitch_angle (e.g., -0.5, or -1.57 for top-down) or the grasp_z slightly.
+       - If the tool returns an error stating that the target is "out of reach", you MUST stop trying to grasp and return a final response stating that the object cannot be reached by the robot. Do NOT loop indefinitely.
     3. Once you find a feasible configuration, call `execute_grasp_tool(object_id, grasp_z, pitch_angle)` with those EXACT parameters.
     4. For placing objects, use `place_tool(x, y, z)`.
     5. For navigation, use `navigate_and_face_tool` with a safe coordinate from `get_nearby_objects_tool`.
@@ -328,6 +329,9 @@ class ReasoningNode(Node):
             if ex**2 + ez**2 < 1e-7:
                 break
                 
+        if ex**2 + ez**2 > 1e-4:
+            raise ValueError(f"Dynamic IK failed to converge to a reachable solution. Final error: ex={ex:.4f}, ez={ez:.4f}.")
+                
         return q
 
     def calculate_ik_for_grasp(self, object_id: str, grasp_z: float, pitch_angle: float):
@@ -371,6 +375,10 @@ class ReasoningNode(Node):
         
         j1 = math.atan2(local_y, local_x)
         r = math.sqrt(local_x**2 + local_y**2)
+        
+        target_reach = math.sqrt((r - 0.03)**2 + local_z**2)
+        if target_reach > 0.37:
+            raise ValueError(f"Target is physically out of reach. Required reach is {target_reach:.2f}m, but max arm length is 0.37m. The object is either too far away or too high.")
         
         joints_pre = self.solve_ik_planar(r - 0.03, local_z, alpha=pitch_angle)
         joints_grasp = self.solve_ik_planar(r + 0.02, local_z, alpha=pitch_angle)
