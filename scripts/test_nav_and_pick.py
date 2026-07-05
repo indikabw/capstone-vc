@@ -94,8 +94,8 @@ def main(args=None):
     # tuned for), so navigation is skipped - both to match the verified-pickup setup and to avoid this
     # VM's Nav2 controller stalls. Drop the "do NOT navigate" clause to exercise full free navigation.
     action_client.send_goal(
-        "Pick up the red_cylinder in front of you. You are already positioned correctly and facing it "
-        "- do NOT navigate. Go directly to the feasibility check and grasp."
+        "Pick up the red_cylinder in front of you. You are already positioned correctly and facing it, "
+        "but if you encounter TF errors, feel free to navigate to resolve them. Go to the feasibility check and grasp."
     )
     rclpy.spin(action_client)
 
