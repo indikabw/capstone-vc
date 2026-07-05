@@ -40,7 +40,7 @@ NAV_PID=$!
 
 # Wait for Nav2
 echo "Waiting for navigation action server and lifecycle..."
-until grep -q "Managed nodes are active" /tmp/nav.log; do
+until grep "lifecycle_manager_navigation" /tmp/nav.log | grep -q "Managed nodes are active"; do
     sleep 1
 done
 echo "Navigation lifecycle active."

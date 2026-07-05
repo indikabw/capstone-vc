@@ -93,10 +93,11 @@ class ReasoningNode(Node):
     
     CRITICAL DISCRETE VISUAL SERVOING LOOP for Picking Objects:
     Instead of executing a blind grasp, you MUST use the following visual feedback loop:
-    1. Validate kinematics first using `check_grasp_feasibility_tool(object_id, grasp_z, pitch_angle)`.
-       - Try pitch_angle=0.0 (horizontal) or -1.57 (top-down).
+    1. FIRST, navigate to a safe pose near the object using `navigate_and_face_tool`. You MUST navigate before checking feasibility!
+    2. Then, validate kinematics using `check_grasp_feasibility_tool(object_id, grasp_z, pitch_angle)`.
+       - Try pitch_angle=1.57 (horizontal) or 3.14 (top-down).
        - If it returns 'out of reach', stop and report failure immediately.
-    2. Once feasible, move to the hover position: call `hover_and_open_tool(object_id, grasp_z, pitch_angle)`.
+    3. Once feasible, move to the hover position: call `hover_and_open_tool(object_id, grasp_z, pitch_angle)`.
     3. Start the visual alignment loop:
        a. Call `assess_visual_alignment_tool(object_id)`. This will return an estimated offset (dx, dy) in meters.
        b. If the absolute offset is larger than 0.02m (2cm) in either direction, call `adjust_pose_tool(dx, dy, dz=0.0)` to correct the XY position, and repeat step 3(a).
@@ -213,7 +214,11 @@ class ReasoningNode(Node):
         while not result_future.done():
             time.sleep(0.1)
             
-        return "Successfully navigated to target."
+        res_obj = result_future.result()
+        if res_obj.status == 4:
+            return "Successfully navigated to target."
+        else:
+            return f"Navigation failed with status {res_obj.status}"
 
     def execute_moveit_pose(self, group_name, link_name, x, y, z, roll=0.0, pitch=0.0, yaw=0.0):
         if not self._moveit_client.wait_for_server(timeout_sec=2.0):
