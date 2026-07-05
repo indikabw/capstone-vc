@@ -90,9 +90,8 @@ class NavPickTester(Node):
 def main(args=None):
     rclpy.init(args=args)
     action_client = NavPickTester()
-    # The robot spawns ~0.35m from the cylinder, already facing it (the geometry the atomic grasp is
-    # tuned for), so navigation is skipped - both to match the verified-pickup setup and to avoid this
-    # VM's Nav2 controller stalls. Drop the "do NOT navigate" clause to exercise full free navigation.
+    # The robot spawns at (0,0), ~2.7m from the target, so this exercises full Nav2 path planning via
+    # navigate_to_standoff_tool rather than the short in-place standoff adjustment.
     action_client.send_goal(
         "Pick up the red cylinder"
     )

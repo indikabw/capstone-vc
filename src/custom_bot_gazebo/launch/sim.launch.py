@@ -90,10 +90,10 @@ def generate_launch_description():
         arguments=[
             '-name', 'custom_bot',
             '-topic', 'robot_description',
-            '-x', '-1.52',
-            '-y', '-2.0',
+            '-x', '0.0',
+            '-y', '0.0',
             '-z', '0.01',
-            '-Y', '3.14',
+            '-Y', '0.0',
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'
