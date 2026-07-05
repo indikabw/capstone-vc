@@ -226,3 +226,7 @@ Per the user's request, after restoring the atomic grasp and vision-for-verifica
 
 ### End-to-end pipeline that succeeds
 `list_objects -> ground object -> check_grasp_feasibility (top-down, computed height) -> execute_grasp_tool (open, hover, descend, close via direct controller, lift, retreat) -> verify_grasp_tool (vision) -> external gz physics check`. The agentic layer is clean and honest; the manipulation now works end to end.
+
+## 12. Grasp posture fix (object distance)
+
+The first verified pick worked but left the arm in a cramped, near-singular posture: with the object only ~0.11m horizontally from the arm base, a top-down reach forced the arm to fold back on itself. Moving the object out to `x=-1.86` (arm base ~0.22m away, `Top-down IK r` 0.11 -> 0.22, reach 0.30 - still well inside the ~0.42m envelope) lets the arm reach in a natural, extended configuration. The pick still succeeds (object lifted from `z=0.19` to `z=0.60`) and both camera videos now show a stable, graceful reach-and-lift instead of the folded pose.
