@@ -110,7 +110,11 @@ controller_server:
     # Progress checker parameters
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
-      required_movement_radius: 0.5
+      # Was 0.5m: for a short (~0.3m) approach to a grasp standoff, the robot can spawn/settle already
+      # within that radius of the goal and can never satisfy it, tripping "failed to make progress" and
+      # looping through recovery behaviors until the outer watchdog times out. 0.10m still catches a
+      # genuinely stuck robot without punishing short final approaches.
+      required_movement_radius: 0.10
       # Increased from 10.0 to 60.0 seconds: under llvmpipe the robot moves ~10x slower in wall time.
       movement_time_allowance: 60.0
     # Goal checker parameters

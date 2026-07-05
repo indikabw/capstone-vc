@@ -166,11 +166,13 @@ class ReasoningNode(Node):
     2. If asked to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, deduce the area by finding objects that belong there. Calculate the center of the bounding box of these objects.
     3. Use `get_object_details_tool` to find the exact (x, y, z, yaw, size) of target objects.
     4. Formulate a step-by-step plan for the task.
-    5. Delegate execution to the `spatial_critic` sub-agent by object_id (e.g., "Pick up '<object_id>'."). The
+    5. Unless the user's instruction says the robot is already positioned and to not navigate, call
+       `navigate_to_standoff_tool(object_id)` to approach the target object. It computes the standing
+       position and orientation itself - you do not choose coordinates.
+    6. Delegate execution to the `spatial_critic` sub-agent by object_id (e.g., "Pick up '<object_id>'."). The
        critic computes the grasp height and approach itself - you do not need to specify grasp_z or angles.
-       If the user's instruction says the robot is already positioned and to not navigate, pass that along.
     """,
-            tools=[self.list_objects_tool, self.get_object_details_tool],
+            tools=[self.list_objects_tool, self.get_object_details_tool, self.navigate_to_standoff_tool],
             sub_agents=[spatial_critic]
         )
         try:
@@ -296,6 +298,40 @@ class ReasoningNode(Node):
             return "Successfully navigated to target."
         else:
             return f"Navigation failed with status {res_obj.status}"
+
+    # Distance from the object center to stand at before grasping. Computed in code (not chosen by the
+    # LLM) because it has to satisfy two opposing constraints at once: far enough that the object (and its
+    # stand) fall outside the local costmap's inflation radius (~0.17m robot_radius + 0.18m inflation), but
+    # close enough that the object stays within the arm's ~0.42m usable reach once stopped. 0.34m is the
+    # verified distance from the direct (no-nav) grasp tests.
+    GRASP_STANDOFF_M = 0.34
+
+    def navigate_to_standoff_tool(self, object_id: str) -> str:
+        """Navigates the robot to a standoff position near the target object and faces it, so a grasp can
+        be attempted afterwards. The standoff distance and approach direction are computed in code from the
+        robot's current pose and the object's position - the LLM does not choose the coordinates. Call this
+        before delegating to the spatial_critic, unless the instructions say the robot is already positioned."""
+        self.get_logger().info(f'Tool called: navigate_to_standoff_tool({object_id})')
+        if object_id not in self.sem_map:
+            return f"Object {object_id} not found."
+        ox = self.sem_map[object_id]['position']['x']
+        oy = self.sem_map[object_id]['position']['y']
+
+        try:
+            t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+        except Exception as e:
+            return f"Failed to get robot pose: {e}"
+        rx, ry = t.transform.translation.x, t.transform.translation.y
+
+        dx, dy = rx - ox, ry - oy
+        dist = math.hypot(dx, dy)
+        if dist < 1e-3:
+            dx, dy, dist = 1.0, 0.0, 1.0
+        ux, uy = dx / dist, dy / dist
+
+        target_x = ox + ux * self.GRASP_STANDOFF_M
+        target_y = oy + uy * self.GRASP_STANDOFF_M
+        return self.navigate_and_face_tool(target_x, target_y, ox, oy)
 
     def execute_moveit_pose(self, group_name, link_name, x, y, z, roll=0.0, pitch=0.0, yaw=0.0):
         if not self._moveit_client.wait_for_server(timeout_sec=2.0):
