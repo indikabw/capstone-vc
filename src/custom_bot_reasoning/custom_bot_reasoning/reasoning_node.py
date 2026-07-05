@@ -7,7 +7,7 @@ from custom_bot_interfaces.action import ReasoningTask
 from nav2_msgs.action import NavigateToPose
 from moveit_msgs.action import MoveGroup
 from moveit_msgs.msg import MotionPlanRequest, Constraints, JointConstraint, PositionConstraint, OrientationConstraint, BoundingVolume
-from geometry_msgs.msg import Point, Pose, Quaternion
+from geometry_msgs.msg import Point, Pose, Quaternion, TwistStamped
 from shape_msgs.msg import SolidPrimitive
 from trajectory_msgs.msg import JointTrajectory, JointTrajectoryPoint
 from builtin_interfaces.msg import Duration
@@ -91,7 +91,13 @@ class ReasoningNode(Node):
         # and grasps never make contact), so the gripper is commanded straight to its controller instead.
         self.gripper_pub = self.create_publisher(
             JointTrajectory, '/gripper_controller/joint_trajectory', 10)
-        
+
+        # Direct velocity publisher for the post-navigation fine approach (see _creep_to_grasp_range).
+        # Nav2's xy_goal_tolerance (0.10m) is coarser than the arm's usable reach margin, so the base can
+        # stop just outside where the top-down IK converges; this closes that gap after Nav2 is done driving.
+        # Published as TwistStamped on 'cmd_vel' to match twist_stamped_to_twist.py's expected input type.
+        self.cmd_vel_pub = self.create_publisher(TwistStamped, 'cmd_vel', 10)
+
         self._action_server = ActionServer(
             self,
             ReasoningTask,
@@ -299,9 +305,66 @@ class ReasoningNode(Node):
     # Distance from the object center to stand at before grasping. Computed in code (not chosen by the
     # LLM) because it has to satisfy two opposing constraints at once: far enough that the object (and its
     # stand) fall outside the local costmap's inflation radius (~0.17m robot_radius + 0.18m inflation), but
-    # close enough that the object stays within the arm's ~0.42m usable reach once stopped. 0.34m is the
-    # verified distance from the direct (no-nav) grasp tests.
+    # close enough that the top-down IK solver can actually converge. Measured empirically (see
+    # _creep_to_grasp_range): the solver's true convergence ceiling is a raw arm-frame radius of ~0.22m
+    # (reach ~0.30m) - well short of the 0.42m distance cap used as a coarse pre-filter elsewhere. 0.34m
+    # base standoff is the verified distance from the direct (no-nav) grasp tests, landing at raw r~0.22m
+    # (right at that ceiling, with near-zero margin). Nav2's xy_goal_tolerance (0.10m) can leave the base
+    # short or long of this by that much, which is enough to push the object past the reach ceiling -
+    # _creep_to_grasp_range corrects for that after Nav2 finishes.
     GRASP_STANDOFF_M = 0.34
+
+    # Fine-approach target: creep forward after Nav2 stops until the object's arm-frame radius reaches
+    # this value. 0.20m sits safely inside the convergence envelope (vs. 0.22m's near-zero margin at the
+    # tuned standoff), so drift from navigation or a different approach angle doesn't push the grasp past
+    # the ceiling.
+    GRASP_APPROACH_RAW_R_TARGET_M = 0.20
+    GRASP_APPROACH_RAW_R_TOLERANCE_M = 0.02
+    GRASP_APPROACH_SPEED_MPS = 0.08
+    # This deadline is wall-clock (time.monotonic()), but /cmd_vel commands only move the robot at the
+    # simulation's real-time factor, which measured ~0.04 under this VM's llvmpipe software rendering (an
+    # 8s cap only closed ~0.02m of a ~0.10m gap - confirmed by a live run). 90s gives >2x margin to close
+    # a worst-case ~0.15m gap at GRASP_APPROACH_SPEED_MPS under that RTF; every other wall-clock timeout in
+    # this file (e.g. NAV_RESULT_TIMEOUT_SEC=600) is sized generously for the same reason.
+    GRASP_APPROACH_MAX_DURATION_SEC = 90.0
+
+    def _creep_to_grasp_range(self, object_id: str) -> str:
+        """Fine-approach correction run after Nav2's coarse navigation completes. Nav2's xy_goal_tolerance
+        (0.10m) is coarser than the arm's usable reach margin (the top-down IK solver only converges up to
+        a raw arm-frame radius of ~0.22m), so the base can stop just outside where a grasp is solvable.
+        This drives straight forward in small steps, re-reading the live arm-frame radius from TF after
+        each step, until it reaches GRASP_APPROACH_RAW_R_TARGET_M or the safety time cap is hit."""
+        if object_id not in self.sem_map:
+            return f"Object {object_id} not found."
+        ox = self.sem_map[object_id]['position']['x']
+        oy = self.sem_map[object_id]['position']['y']
+        oz = self.sem_map[object_id]['position']['z']
+
+        stop = TwistStamped()
+        stop.header.frame_id = 'base_link'
+
+        start = time.monotonic()
+        last_r = None
+        while time.monotonic() - start < self.GRASP_APPROACH_MAX_DURATION_SEC:
+            try:
+                _, r, _ = self._map_point_to_arm_frame(ox, oy, oz)
+            except Exception as e:
+                self.get_logger().warn(f'_creep_to_grasp_range: TF lookup failed: {e}')
+                break
+            last_r = r
+            if r <= self.GRASP_APPROACH_RAW_R_TARGET_M + self.GRASP_APPROACH_RAW_R_TOLERANCE_M:
+                break
+            cmd = TwistStamped()
+            cmd.header.stamp = self.get_clock().now().to_msg()
+            cmd.header.frame_id = 'base_link'
+            cmd.twist.linear.x = self.GRASP_APPROACH_SPEED_MPS
+            self.cmd_vel_pub.publish(cmd)
+            time.sleep(0.1)
+        stop.header.stamp = self.get_clock().now().to_msg()
+        self.cmd_vel_pub.publish(stop)
+        time.sleep(0.3)
+        self.get_logger().info(f'_creep_to_grasp_range: finished at raw r={last_r}')
+        return f"Fine approach complete (raw r={last_r})."
 
     def navigate_to_standoff_tool(self, object_id: str) -> str:
         """Navigates the robot to a standoff position near the target object and faces it, so a grasp can
@@ -341,7 +404,11 @@ class ReasoningNode(Node):
 
         target_x = ox + ux * self.GRASP_STANDOFF_M
         target_y = oy + uy * self.GRASP_STANDOFF_M
-        return self.navigate_and_face_tool(target_x, target_y, ox, oy)
+        nav_result = self.navigate_and_face_tool(target_x, target_y, ox, oy)
+        if not nav_result.startswith("Successfully navigated"):
+            return nav_result
+        creep_result = self._creep_to_grasp_range(object_id)
+        return f"{nav_result} {creep_result}"
 
     def execute_moveit_pose(self, group_name, link_name, x, y, z, roll=0.0, pitch=0.0, yaw=0.0):
         if not self._moveit_client.wait_for_server(timeout_sec=2.0):
@@ -626,8 +693,16 @@ class ReasoningNode(Node):
 
         reach = math.sqrt(r**2 + lz_grip**2)
         self.get_logger().info(f'Top-down IK for {object_id}: r={r:.3f} lz_grip={lz_grip:.3f} reach={reach:.3f}')
-        if reach > 0.42:
-            raise ValueError(f"Top-down target out of reach ({reach:.2f}m). Move the base closer.")
+        # 0.42m was a coarse Euclidean sanity check; the top-down IK solver's actual convergence ceiling is
+        # much tighter (measured: converges up to raw r~0.22m / reach~0.30m for this grip height, fails
+        # beyond it - see GRASP_APPROACH_RAW_R_TARGET_M). Reject clearly-unreachable geometry here with an
+        # actionable message instead of burning 3 iterative solves (hover/grip/lift) on a doomed target;
+        # solve_ik_planar's own convergence check below remains the definitive gate for the fuzzy boundary.
+        if reach > 0.33:
+            raise ValueError(
+                f"Top-down target out of reach ({reach:.2f}m, ceiling ~0.30m). "
+                f"Reposition closer via navigate_to_standoff_tool before retrying."
+            )
 
         # alpha=1.57 -> gripper points straight down; radius pulled in by the measured overshoot to center jaws.
         r_target = r + self.GRIPPER_RADIAL_OFFSET
