@@ -230,3 +230,16 @@ Per the user's request, after restoring the atomic grasp and vision-for-verifica
 ## 12. Grasp posture fix (object distance)
 
 The first verified pick worked but left the arm in a cramped, near-singular posture: with the object only ~0.11m horizontally from the arm base, a top-down reach forced the arm to fold back on itself. Moving the object out to `x=-1.86` (arm base ~0.22m away, `Top-down IK r` 0.11 -> 0.22, reach 0.30 - still well inside the ~0.42m envelope) lets the arm reach in a natural, extended configuration. The pick still succeeds (object lifted from `z=0.19` to `z=0.60`) and both camera videos now show a stable, graceful reach-and-lift instead of the folded pose.
+
+## 13. Repeatability check (2 fresh reruns)
+
+Ran the current committed scenario twice more, back to back, with no code/config changes between runs:
+
+| Run | Result | Final z | GRIP-OFFSET (dx, dy, dz) | Notes |
+|---|---|---|---|---|
+| Repeat 1 | **Success** | 0.601 | (-0.021, +0.032, -0.006) | Clean lift, matches the committed-state success. |
+| Repeat 2 | **Failure** | 0.015 | (-0.033, +0.035, -0.005) | Object knocked off the stand (drifted to x=-1.928, near-floor z). |
+
+**Finding: the grasp is not perfectly repeatable.** Across 3 total attempts on the current committed pipeline (the original posture-fix run + these 2 reruns), the result is **2/3 successful (67%)**. The failure's `GRIP-OFFSET dx` (-0.033) was ~1.2cm further off-centre than the two successes (-0.021), even though the arm command was byte-identical each time - the residual variance comes from simulation timing/physics-settling jitter (Gazebo step timing, controller settle order), not from any LLM or reasoning-layer nondeterminism. The current grasp has essentially no margin: the jaw-to-object interference is only ~1-2mm, so a few millimetres of simulation jitter is enough to turn a firm grip into a miss that knocks the object off.
+
+This means the manipulation is real and working, but **brittle** - a legitimate next-hardening step (not attempted here, to avoid re-opening an already-long tuning loop) would be to widen the grasp margin (e.g. a slightly larger object, or closing further past first contact) so a few mm of simulation jitter can no longer flip a success into a failure. The reasoning framework itself is unaffected by this: the CoT, watchdogs, and honest-failure reporting behaved identically and correctly in both the success and the failure run (the VLM `verify_grasp_tool` again reported a false negative on the successful run, reinforcing that the external physics check must remain the ground truth for success).
