@@ -938,7 +938,7 @@
 
     <!-- Custom Test Object: red_cylinder -->
     <model name='red_cylinder'>
-      <pose>-1.87 -2.0 0.1 0 0 0</pose>
+      <pose>-1.75 -2.0 0.1 0 0 0</pose>
       <link name='link'>
         <inertial>
           <mass>0.02</mass>
