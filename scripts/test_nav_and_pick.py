@@ -56,8 +56,8 @@ class NavPickTester(Node):
             if z_match:
                 z = float(z_match.group(1).replace(']', ''))
                 self.get_logger().info(f'Physics check: red_cylinder z = {z:.4f}')
-                # cylinder should be higher than its initial ground pos (0.10 now)
-                if z > 0.12:
+                # cylinder rests at z=0.25 on its stand; require a real lift above that
+                if z > 0.27:
                     return True
                 else:
                     self.get_logger().error('Cylinder z coordinate too low, lift failed')

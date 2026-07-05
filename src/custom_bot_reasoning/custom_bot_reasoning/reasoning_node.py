@@ -31,6 +31,28 @@ if 'GEMINI_API_KEY' not in os.environ:
     print("FATAL: GEMINI_API_KEY environment variable is not set.")
     sys.exit(1)
 
+# --- Watchdog timeouts (seconds) ---
+NAV_ACCEPT_TIMEOUT_SEC = 10.0
+NAV_RESULT_TIMEOUT_SEC = 240.0
+MOVEIT_ACCEPT_TIMEOUT_SEC = 10.0
+MOVEIT_RESULT_TIMEOUT_SEC = 60.0
+TASK_TIMEOUT_SEC = 600.0
+
+# --- Deterministic visual servo tuning ---
+CAMERA_WIDTH_PX = 1280
+CAMERA_HEIGHT_PX = 720
+CAMERA_HORIZONTAL_FOV_RAD = 1.25
+CAMERA_FOCAL_PX = (CAMERA_WIDTH_PX / 2.0) / math.tan(CAMERA_HORIZONTAL_FOV_RAD / 2.0)
+SERVO_MAX_ITERS = 8
+SERVO_ALIGN_TOLERANCE_M = 0.02
+SERVO_LATERAL_GAIN = 0.6
+SERVO_DEPTH_GAIN = 0.6
+SERVO_MAX_J1_STEP_RAD = 0.12
+SERVO_MAX_J1_OFFSET_RAD = 0.4
+SERVO_MAX_DEPTH_STEP_M = 0.03
+SERVO_MIN_CONTOUR_AREA_PX = 40
+SERVO_SETTLE_SEC = 1.5
+
 class ReasoningNode(Node):
     def __init__(self):
         super().__init__('reasoning_node')
@@ -90,22 +112,32 @@ class ReasoningNode(Node):
             instruction="""
     You are the Spatial Critic Agent. The Semantic Planner will give you high-level intents.
     Your job is to ground these intents into safe, feasible robot movements.
-    
-    CRITICAL DISCRETE VISUAL SERVOING LOOP for Picking Objects:
-    Instead of executing a blind grasp, you MUST use the following visual feedback loop:
-    1. FIRST, navigate to a safe pose near the object using `navigate_and_face_tool`. You MUST navigate before checking feasibility!
+
+    CRITICAL WORKFLOW for Picking Objects:
+    Instead of executing a blind grasp, you MUST use the following sequence:
+    1. If the incoming instruction explicitly states the robot is already positioned correctly and
+       tells you not to navigate, skip straight to step 2. Otherwise, FIRST navigate to a safe pose
+       near the object using `navigate_and_face_tool` before checking feasibility.
+       - The arm is mounted well above the ground, so reaching a LOW grasp_z (near the ground) consumes most
+         of the arm's 0.37m reach budget vertically, leaving very little horizontal budget. For any grasp_z
+         below ~0.2m, stage the robot so its base is within ~0.25m of the object's (x, y) position - closer
+         than you would for a normal "safe distance" stop. If feasibility keeps failing as 'out of reach' at
+         a given distance, your next navigation attempt MUST move strictly closer, not to a similar or farther
+         distance.
     2. Then, validate kinematics using `check_grasp_feasibility_tool(object_id, grasp_z, pitch_angle)`.
        - Try pitch_angle=1.57 (horizontal) or 3.14 (top-down).
-       - If it returns 'out of reach', stop and report failure immediately.
+       - If it returns 'out of reach', navigate strictly closer (see above) and retry, up to 3 times, before
+         reporting failure.
     3. Once feasible, move to the hover position: call `hover_and_open_tool(object_id, grasp_z, pitch_angle)`.
-    3. Start the visual alignment loop:
-       a. Call `assess_visual_alignment_tool(object_id)`. This will return an estimated offset (dx, dy) in meters.
-       b. If the absolute offset is larger than 0.02m (2cm) in either direction, call `adjust_pose_tool(dx, dy, dz=0.0)` to correct the XY position, and repeat step 3(a).
-       c. If the offset is within the 0.02m tolerance (e.g. dx < 0.02 and dy < 0.02), you are aligned!
-    4. Call `adjust_pose_tool(dx=0.0, dy=0.0, dz=-0.1)` (or whatever descent is needed based on your hover z and target z) to lower the arm onto the object.
-    5. Call `close_gripper_and_lift_tool()` to complete the pick!
+    4. Call `visual_servo_align_tool(object_id)` exactly once. This runs a deterministic, code-only
+       alignment loop (no further tool calls needed from you) and returns either:
+       - "Alignment converged..." - proceed to step 5.
+       - "Alignment failed: object not visible..." or "did not converge..." - navigate the base to a
+         better vantage point (`navigate_and_face_tool`), then re-run from step 3.
+    5. Call `adjust_pose_tool(dx=0.0, dy=0.0, dz=-0.1)` (or whatever descent is needed based on your hover z and target z) to lower the arm onto the object.
+    6. Call `close_gripper_and_lift_tool()` to complete the pick!
     """,
-            tools=[self.get_nearby_objects_tool, self.navigate_and_face_tool, self.check_grasp_feasibility_tool, self.hover_and_open_tool, self.assess_visual_alignment_tool, self.adjust_pose_tool, self.close_gripper_and_lift_tool, self.place_tool]
+            tools=[self.get_nearby_objects_tool, self.navigate_and_face_tool, self.check_grasp_feasibility_tool, self.hover_and_open_tool, self.visual_servo_align_tool, self.adjust_pose_tool, self.close_gripper_and_lift_tool, self.place_tool]
         )
 
         self.agent = Agent(
@@ -118,9 +150,9 @@ class ReasoningNode(Node):
     CRITICAL INSTRUCTIONS:
     1. Use `list_objects_tool` to see all available objects in the environment. Look for keywords matching the user's request.
     2. If asked to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, deduce the area by finding objects that belong there. Calculate the center of the bounding box of these objects.
-    3. Use `get_object_details_tool` to find the exact (x, y, yaw, size) of target objects.
+    3. Use `get_object_details_tool` to find the exact (x, y, z, yaw, size) of target objects. Use the object's own reported z position as the grasp_z you hand off - do not guess or reuse a value from a previous task.
     4. Formulate a step-by-step plan for the task.
-    5. Delegate the actual execution of navigation and grasping to the `spatial_critic` sub-agent. Give it clear instructions (e.g., "Navigate to a safe spot near (x,y) and pick up 'red_block' at grasp_z=0.25").
+    5. Delegate the actual execution of navigation and grasping to the `spatial_critic` sub-agent, passing the object's real (x, y, grasp_z) from step 3 (e.g., "Navigate to a safe spot near (x,y) and pick up '<object_id>' at grasp_z=<its actual reported z>").
     """,
             tools=[self.list_objects_tool, self.get_object_details_tool],
             sub_agents=[spatial_critic]
@@ -203,17 +235,24 @@ class ReasoningNode(Node):
         goal_msg.pose.pose.orientation.w = math.cos(yaw / 2.0)
         
         future = self._nav_client.send_goal_async(goal_msg)
+        start = time.monotonic()
         while not future.done():
+            if time.monotonic() - start > NAV_ACCEPT_TIMEOUT_SEC:
+                return f"Nav2 did not accept the goal within {NAV_ACCEPT_TIMEOUT_SEC}s."
             time.sleep(0.1)
-            
+
         goal_handle = future.result()
         if not goal_handle.accepted:
             return "Nav2 goal rejected."
-            
+
         result_future = goal_handle.get_result_async()
+        start = time.monotonic()
         while not result_future.done():
+            if time.monotonic() - start > NAV_RESULT_TIMEOUT_SEC:
+                goal_handle.cancel_goal_async()
+                return f"Navigation timed out after {NAV_RESULT_TIMEOUT_SEC}s and was cancelled. Try a closer or simpler goal."
             time.sleep(0.1)
-            
+
         res_obj = result_future.result()
         if res_obj.status == 4:
             return "Successfully navigated to target."
@@ -257,7 +296,10 @@ class ReasoningNode(Node):
         goal_msg.request = req
 
         future = self._moveit_client.send_goal_async(goal_msg)
+        start = time.monotonic()
         while not future.done():
+            if time.monotonic() - start > MOVEIT_ACCEPT_TIMEOUT_SEC:
+                return False, f"MoveIt2 did not accept the goal within {MOVEIT_ACCEPT_TIMEOUT_SEC}s."
             time.sleep(0.1)
 
         goal_handle = future.result()
@@ -265,13 +307,17 @@ class ReasoningNode(Node):
             return False, "MoveIt2 pose goal rejected."
 
         result_future = goal_handle.get_result_async()
+        start = time.monotonic()
         while not result_future.done():
+            if time.monotonic() - start > MOVEIT_RESULT_TIMEOUT_SEC:
+                goal_handle.cancel_goal_async()
+                return False, f"MoveIt2 pose timed out after {MOVEIT_RESULT_TIMEOUT_SEC}s and was cancelled."
             time.sleep(0.1)
 
         res = result_future.result().result
         if res.error_code.val != 1:
             return False, f"MoveIt2 pose failed with error code: {res.error_code.val}"
-            
+
         return True, "Success"
 
     def execute_moveit_joints(self, group_name, joint_names, positions):
@@ -302,7 +348,10 @@ class ReasoningNode(Node):
         goal_msg.request = req
 
         future = self._moveit_client.send_goal_async(goal_msg)
+        start = time.monotonic()
         while not future.done():
+            if time.monotonic() - start > MOVEIT_ACCEPT_TIMEOUT_SEC:
+                return False, f"MoveIt2 did not accept the goal within {MOVEIT_ACCEPT_TIMEOUT_SEC}s."
             time.sleep(0.1)
 
         goal_handle = future.result()
@@ -310,13 +359,17 @@ class ReasoningNode(Node):
             return False, "MoveIt2 goal rejected."
 
         result_future = goal_handle.get_result_async()
+        start = time.monotonic()
         while not result_future.done():
+            if time.monotonic() - start > MOVEIT_RESULT_TIMEOUT_SEC:
+                goal_handle.cancel_goal_async()
+                return False, f"MoveIt2 timed out after {MOVEIT_RESULT_TIMEOUT_SEC}s and was cancelled."
             time.sleep(0.1)
 
         res = result_future.result().result
         if res.error_code.val != 1:
             return False, f"MoveIt2 failed with error code: {res.error_code.val}"
-            
+
         return True, "Success"
 
     def solve_ik_planar(self, r_target, z_target, alpha=0.8, ori_weight=0.001):
@@ -456,7 +509,7 @@ class ReasoningNode(Node):
         if j_pre is None or j_grasp is None or j_lift is None:
             return "Feasibility check failed: Dynamic IK failed to converge to a reachable solution."
             
-        return "Feasibility check passed. The grasp is kinematically valid. You may now call execute_grasp_tool with these exact parameters."
+        return "Feasibility check passed. The grasp is kinematically valid. You may now call hover_and_open_tool with these exact parameters."
 
     def hover_and_open_tool(self, object_id: str, grasp_z: float, pitch_angle: float) -> str:
         """Moves the arm to a hover position directly above the object (grasp_z + 0.15m) and opens the gripper."""
@@ -466,87 +519,157 @@ class ReasoningNode(Node):
             j1, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(object_id, grasp_z + 0.15, pitch_angle)
             if j_grasp is None: return "Hover IK failed."
             
-            # Store base joint1 and current grasp pose for adjust_pose_tool
-            self.current_grasp_params = {'object_id': object_id, 'z': grasp_z + 0.15, 'pitch': pitch_angle, 'r_offset': 0.0, 'j1': j1}
-            
+            # Store base joint1 and current grasp pose for visual_servo_align_tool / adjust_pose_tool
+            self.current_grasp_params = {'object_id': object_id, 'z': grasp_z + 0.15, 'pitch': pitch_angle, 'r_offset': 0.0, 'j1': j1, 'j1_offset': 0.0}
+
             arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
             gripper_joints = ['omx_gripper_left_joint']
-            
+
             self.execute_moveit_joints('gripper', gripper_joints, [0.019])
             time.sleep(1.0)
-            
+
             ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(j_grasp))
             if not ok: return f"Failed to hover: {msg}"
-            
-            return "Successfully moved to hover position and opened gripper. You can now call assess_visual_alignment_tool."
+
+            return "Successfully moved to hover position and opened gripper. You can now call visual_servo_align_tool."
         except Exception as e:
             return f"Hover failed: {e}"
 
-    def assess_visual_alignment_tool(self, object_id: str) -> str:
-        """Takes a picture and asks the vision model for the (dx, dy) offset between the gripper and the object."""
-        self.get_logger().info(f'Tool called: assess_visual_alignment_tool({object_id})')
-        
-        img = None
-        with self.image_lock:
-            if self.latest_image is not None:
-                img = self.latest_image.copy()
-        
-        if img is None:
-            return "Offset: dx=0.0, dy=0.0 (Fallback: No image available from camera)"
-            
+    def _find_object_pixel_bbox(self, img, object_id: str):
+        """Segments the object in the image via HSV thresholding and returns (cx, cy, apparent_diameter_px) of the
+        largest matching contour, or None if not found. Currently tuned for red objects only (the only color used
+        in this scenario) - see docs/agentic_reasoning_evaluation.md for the color-generalization limitation."""
         import cv2
-        _, buffer = cv2.imencode('.jpg', img)
-        image_bytes = buffer.tobytes()
-        
-        try:
-            from google import genai
-            from google.genai import types
-            client = genai.Client()
-            prompt = f"You are a visual servoing system. This image is from a robot camera looking at '{object_id}' and the robot's gripper. Estimate the horizontal (dx) and depth (dy) offset in meters from the gripper center to the object center. Your response must be purely a JSON string like: {{\"dx\": 0.01, \"dy\": -0.015}}. Do not include any other text. If they are perfectly aligned, return dx:0.0, dy:0.0."
-            
-            resp = client.models.generate_content(
-                model='gemini-2.5-pro',
-                contents=[
-                    types.Part.from_bytes(data=image_bytes, mime_type='image/jpeg'),
-                    prompt
-                ]
-            )
-            text = resp.text.strip().replace('```json', '').replace('```', '')
-            parsed = json.loads(text)
-            dx = float(parsed.get("dx", 0.0))
-            dy = float(parsed.get("dy", 0.0))
-            return f"Offset: dx={dx}, dy={dy}"
-        except Exception as e:
-            self.get_logger().error(f"Vision API failed: {e}")
-            # Mock a successful alignment if vision fails for testing purposes
-            return "Offset: dx=0.0, dy=0.0 (Fallback mock due to vision API error)"
+        import numpy as np
+        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
+        lower1, upper1 = np.array([0, 120, 70]), np.array([10, 255, 255])
+        lower2, upper2 = np.array([170, 120, 70]), np.array([180, 255, 255])
+        mask = cv2.inRange(hsv, lower1, upper1) | cv2.inRange(hsv, lower2, upper2)
+        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        if not contours:
+            return None
+        largest = max(contours, key=cv2.contourArea)
+        if cv2.contourArea(largest) < SERVO_MIN_CONTOUR_AREA_PX:
+            return None
+        x, y, w, h = cv2.boundingRect(largest)
+        return (x + w / 2.0, y + h / 2.0, float(max(w, h)))
+
+    def visual_servo_align_tool(self, object_id: str) -> str:
+        """
+        Deterministically aligns the gripper over the object using onboard camera feedback - no LLM calls
+        inside the loop. Segments the object via HSV color thresholding, estimates its lateral pixel offset
+        and apparent size, and drives a bounded proportional controller (fixed gain, clamped per-step
+        correction, hard iteration cap) until the estimated lateral/depth error is below the 0.02m tolerance
+        or the iteration budget is exhausted. Call this once after hover_and_open_tool; it runs the full
+        alignment loop internally and returns only the final outcome.
+        """
+        self.get_logger().info(f'Tool called: visual_servo_align_tool({object_id})')
+        if not hasattr(self, 'current_grasp_params'):
+            return "Error: You must call hover_and_open_tool before aligning."
+
+        obj = self.current_grasp_params['object_id']
+        pitch = self.current_grasp_params['pitch']
+        misses = 0
+        reference_diameter_px = None
+
+        for iteration in range(SERVO_MAX_ITERS):
+            img = None
+            with self.image_lock:
+                if self.latest_image is not None:
+                    img = self.latest_image.copy()
+
+            if img is None:
+                return "Alignment aborted: no camera image available."
+
+            found = self._find_object_pixel_bbox(img, obj)
+            if found is None:
+                misses += 1
+                if misses >= 2:
+                    return ("Alignment failed: object not visible in the onboard camera after hover. "
+                            "Consider navigating the base to a better vantage point and re-hovering.")
+                time.sleep(SERVO_SETTLE_SEC)
+                continue
+            misses = 0
+
+            px, py, apparent_diameter_px = found
+            real_diameter_m = self.sem_map.get(obj, {}).get('size', {}).get('dx', 0.03) or 0.03
+
+            depth_m = (real_diameter_m * CAMERA_FOCAL_PX) / apparent_diameter_px
+            lateral_error_m = (px - CAMERA_WIDTH_PX / 2.0) * depth_m / CAMERA_FOCAL_PX
+            self.last_measured_depth_m = depth_m
+
+            if reference_diameter_px is None:
+                reference_diameter_px = apparent_diameter_px
+                depth_error_m = 0.0
+            else:
+                reference_depth_m = (real_diameter_m * CAMERA_FOCAL_PX) / reference_diameter_px
+                depth_error_m = depth_m - reference_depth_m
+
+            if abs(lateral_error_m) < SERVO_ALIGN_TOLERANCE_M and abs(depth_error_m) < SERVO_ALIGN_TOLERANCE_M:
+                return (f"Alignment converged after {iteration + 1} iteration(s): "
+                        f"lateral_error={lateral_error_m:.3f}m, depth_error={depth_error_m:.3f}m. "
+                        f"You may now call adjust_pose_tool(dx=0, dy=0, dz=<descent>) to lower and grasp.")
+
+            dtheta = max(-SERVO_MAX_J1_STEP_RAD, min(SERVO_MAX_J1_STEP_RAD, SERVO_LATERAL_GAIN * lateral_error_m / max(depth_m, 0.05)))
+            depth_step = max(-SERVO_MAX_DEPTH_STEP_M, min(SERVO_MAX_DEPTH_STEP_M, SERVO_DEPTH_GAIN * depth_error_m))
+
+            new_j1_offset = self.current_grasp_params['j1_offset'] + dtheta
+            new_j1_offset = max(-SERVO_MAX_J1_OFFSET_RAD, min(SERVO_MAX_J1_OFFSET_RAD, new_j1_offset))
+            new_r_offset = self.current_grasp_params['r_offset'] + depth_step
+
+            self.current_grasp_params['j1_offset'] = new_j1_offset
+            self.current_grasp_params['r_offset'] = new_r_offset
+
+            try:
+                j1_new, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(
+                    obj, self.current_grasp_params['z'], pitch, r_offset=new_r_offset)
+                arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
+                ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1_new + new_j1_offset] + list(j_grasp))
+                if not ok:
+                    return f"Alignment step failed while correcting pose: {msg}"
+            except Exception as e:
+                return f"Alignment step error: {e}"
+
+            time.sleep(SERVO_SETTLE_SEC)
+
+        return (f"Alignment did not converge within {SERVO_MAX_ITERS} iterations "
+                f"(last lateral_error={lateral_error_m:.3f}m, depth_error={depth_error_m:.3f}m). "
+                f"Consider navigating the base to a better vantage point and retrying.")
 
     def adjust_pose_tool(self, dx: float, dy: float, dz: float) -> str:
-        """Adjusts the arm position by the given dx, dy, and dz (in meters)."""
+        """Adjusts the arm position by the given dx (lateral), dy (depth/reach), and dz (height), in meters.
+        Intended for the final controlled descent after visual_servo_align_tool reports convergence."""
         self.get_logger().info(f'Tool called: adjust_pose_tool(dx={dx}, dy={dy}, dz={dz})')
         if not hasattr(self, 'current_grasp_params'):
             return "Error: You must call hover_and_open_tool before adjusting."
-            
+
         obj = self.current_grasp_params['object_id']
         current_z = self.current_grasp_params['z']
         pitch = self.current_grasp_params['pitch']
         current_r_offset = self.current_grasp_params['r_offset']
-        j1 = self.current_grasp_params['j1']
-        
-        # We adjust the radius (r_offset) by dy (depth), and we could adjust j1 by dx, but for planar simplification we'll just handle dy and dz for now, since it's a 4DOF arm.
+        current_j1_offset = self.current_grasp_params.get('j1_offset', 0.0)
+
+        # Convert the requested lateral shift (meters) into a joint1 rotation using the last depth
+        # estimate from visual_servo_align_tool, falling back to a conservative mid-range depth.
+        depth_for_conversion = getattr(self, 'last_measured_depth_m', 0.2)
+        dtheta = dx / max(depth_for_conversion, 0.05)
+        new_j1_offset = max(-SERVO_MAX_J1_OFFSET_RAD, min(SERVO_MAX_J1_OFFSET_RAD, current_j1_offset + dtheta))
+
         new_r_offset = current_r_offset + dy
         new_z = current_z + dz
-        
+
         self.current_grasp_params['z'] = new_z
         self.current_grasp_params['r_offset'] = new_r_offset
-        
+        self.current_grasp_params['j1_offset'] = new_j1_offset
+
         try:
             j1_new, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(obj, new_z, pitch, r_offset=new_r_offset)
-            
+
             arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
-            ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1_new] + list(j_grasp))
+            ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1_new + new_j1_offset] + list(j_grasp))
             if not ok: return f"Adjustment failed: {msg}"
-            
+
             return f"Successfully adjusted pose. New Z is {new_z}."
         except Exception as e:
             return f"Adjustment error: {e}"
@@ -566,12 +689,13 @@ class ReasoningNode(Node):
         try:
             # Lift
             j1_new, j_pre, j_grasp, j_lift = self.calculate_ik_for_grasp(
-                self.current_grasp_params['object_id'], 
-                self.current_grasp_params['z'] + 0.15, 
-                self.current_grasp_params['pitch'], 
+                self.current_grasp_params['object_id'],
+                self.current_grasp_params['z'] + 0.15,
+                self.current_grasp_params['pitch'],
                 r_offset=self.current_grasp_params['r_offset']
             )
-            self.execute_moveit_joints('arm', arm_joints, [j1_new] + list(j_lift))
+            j1_offset = self.current_grasp_params.get('j1_offset', 0.0)
+            self.execute_moveit_joints('arm', arm_joints, [j1_new + j1_offset] + list(j_lift))
             time.sleep(1.0)
         except Exception as e:
             self.get_logger().error(f"Lift IK failed: {e}")
@@ -646,19 +770,31 @@ class ReasoningNode(Node):
                             resp_text += str(event.output)
                 return resp_text
 
-            # Run the ADK asyncio loop safely in this worker thread
-            response = asyncio.run(run_adk())
+            async def run_adk_with_deadline():
+                return await asyncio.wait_for(run_adk(), timeout=TASK_TIMEOUT_SEC)
+
+            # Run the ADK asyncio loop safely in this worker thread, bounded by an overall task deadline
+            response = asyncio.run(run_adk_with_deadline())
             summary = str(response)
+            task_failed = False
+        except asyncio.TimeoutError:
+            self.get_logger().error(f"ADK Agent exceeded the {TASK_TIMEOUT_SEC}s task deadline.")
+            summary = f"Reasoning failed: task exceeded {TASK_TIMEOUT_SEC}s deadline."
+            task_failed = True
         except Exception as e:
             self.get_logger().error(f"ADK Agent failed: {e}")
             summary = f"Reasoning failed: {e}"
-        
+            task_failed = True
+
         self.get_logger().info('Reasoning complete.')
-        goal_handle.succeed()
-        
+
         result = ReasoningTask.Result()
-        result.success = True
+        result.success = not task_failed
         result.summary = summary
+        if task_failed:
+            goal_handle.abort()
+        else:
+            goal_handle.succeed()
         return result
 
 def main(args=None):

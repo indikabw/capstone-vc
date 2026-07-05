@@ -936,9 +936,40 @@
       <direction>0 0 -1</direction>
     </light>
 
+    <!-- Static stand raising red_cylinder to a grasp height that is within the OpenManipulator-X's
+         reach envelope. The arm mount sits well above the ground, so a target resting directly on
+         the floor (grasp center ~0.1m) requires more vertical reach than the arm has left over for
+         any reasonable horizontal approach distance. A 0.15m-tall stand puts the cylinder's center
+         at 0.25m, matching the reach envelope validated by earlier feasibility checks. -->
+    <model name='cylinder_stand'>
+      <static>true</static>
+      <pose>-1.75 -2.0 0.075 0 0 0</pose>
+      <link name='link'>
+        <visual name='visual'>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.15</size>
+            </box>
+          </geometry>
+          <material>
+            <ambient>0.5 0.5 0.5 1</ambient>
+            <diffuse>0.5 0.5 0.5 1</diffuse>
+            <specular>0.1 0.1 0.1 1</specular>
+          </material>
+        </visual>
+        <collision name='collision'>
+          <geometry>
+            <box>
+              <size>0.05 0.05 0.15</size>
+            </box>
+          </geometry>
+        </collision>
+      </link>
+    </model>
+
     <!-- Custom Test Object: red_cylinder -->
     <model name='red_cylinder'>
-      <pose>-1.75 -2.0 0.1 0 0 0</pose>
+      <pose>-1.75 -2.0 0.25 0 0 0</pose>
       <link name='link'>
         <inertial>
           <mass>0.02</mass>
