@@ -314,10 +314,23 @@ class ReasoningNode(Node):
         ox = self.sem_map[object_id]['position']['x']
         oy = self.sem_map[object_id]['position']['y']
 
-        try:
-            t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
-        except Exception as e:
-            return f"Failed to get robot pose: {e}"
+        # This is the earliest TF consumer in the whole task sequence - it can run just seconds after the
+        # reasoning node starts, before AMCL/the TF tree has published enough history. A single lookup here
+        # intermittently raises "Lookup would require extrapolation into the past"; every other TF lookup in
+        # this file runs later (after positioning/feasibility steps) and never hits this race. Poll briefly
+        # instead of failing on the first miss.
+        t = None
+        deadline = time.monotonic() + 5.0
+        last_err = None
+        while time.monotonic() < deadline:
+            try:
+                t = self.tf_buffer.lookup_transform('map', 'base_link', rclpy.time.Time())
+                break
+            except Exception as e:
+                last_err = e
+                time.sleep(0.2)
+        if t is None:
+            return f"Failed to get robot pose: {last_err}"
         rx, ry = t.transform.translation.x, t.transform.translation.y
 
         dx, dy = rx - ox, ry - oy
