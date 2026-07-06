@@ -68,6 +68,11 @@ class ReasoningNode(Node):
         self.latest_joint_states = {}
         self.joint_lock = threading.Lock()
 
+        # Whether the gripper is currently believed to hold an object (set by execute_grasp_tool's
+        # code-level grip check, cleared by place_tool). Gates place_tool so it refuses to "place" when
+        # nothing is actually held, instead of silently opening the gripper on empty air.
+        self.holding = False
+
         self.callback_group = ReentrantCallbackGroup()
 
         self.image_sub = self.create_subscription(
@@ -144,7 +149,9 @@ class ReasoningNode(Node):
       its open jaws pass around the body, then closes and lifts. This is the approach this arm reaches most
       reliably. The grasp height and approach are computed for you; pass pitch_angle=1.57.
 
-    WORKFLOW (follow in order, once each unless a step tells you to retry):
+    You are given ONE of two jobs per delegation - the Semantic Planner's instruction tells you which:
+
+    JOB A - PICK (delegation says "Pick up '<object_id>'"):
     1. Positioning: You are already positioned correctly. Do not navigate.
     2. VETO CHECK: call `check_grasp_feasibility_tool(object_id, pitch_angle=1.57)`. If it reports the object
        is out of reach, call `readjust_base_tool(object_id)` to creep the base closer, then retry the
@@ -152,11 +159,17 @@ class ReasoningNode(Node):
        failure and stop.
     3. Once feasibility passes, call `execute_grasp_tool(object_id, pitch_angle=1.57)` exactly once. This runs
        the entire atomic grasp (open, hover, descend, close, lift, retreat). No other arm tools are needed.
-    4. Call `verify_grasp_tool(object_id)` to visually confirm the object is held and lifted. Report SUCCESS
-       only if verification is POSITIVE. If it is NEGATIVE or inconclusive, report honest failure - never
-       claim success the camera does not confirm.
+    4. execute_grasp_tool's return message tells you whether the grasp held: it ends with either "Gripper
+       settled at ... (blocked by object -> likely holding it)" or "WARNING: gripper closed to ... (empty
+       air -> likely missed the object)". Report SUCCESS only on the former; report honest failure on the
+       latter. There is no separate visual verification step - trust this signal.
+
+    JOB B - PLACE (delegation says "Place it here" / "Release the object"):
+    - The Semantic Planner has already navigated to the destination. Call `place_tool()` directly - it takes
+      no coordinates, it releases at wherever the robot currently stands. It refuses (and tells you so) if no
+      object is currently believed held; if it refuses, report that honestly rather than claiming success.
     """,
-            tools=[self.get_nearby_objects_tool, self.check_grasp_feasibility_tool, self.readjust_base_tool, self.execute_grasp_tool, self.verify_grasp_tool, self.place_tool]
+            tools=[self.get_nearby_objects_tool, self.check_grasp_feasibility_tool, self.readjust_base_tool, self.execute_grasp_tool, self.place_tool]
         )
 
         self.agent = Agent(
@@ -168,16 +181,39 @@ class ReasoningNode(Node):
     
     CRITICAL INSTRUCTIONS:
     1. Use `list_objects_tool` to see all available objects in the environment. Look for keywords matching the user's request.
-    2. If asked to go to a general room (e.g., 'kitchen', 'bedroom') or the 'center' of a room, deduce the area by finding objects that belong there. Calculate the center of the bounding box of these objects.
+    2. If asked to go to a general room (e.g., 'kitchen', 'bedroom'), find the objects that belong there via
+       `get_object_details_tool`, then call `navigate_to_room_tool` with that list of object_ids - it computes
+       the room's center and an open standing point itself, you do not compute coordinates.
     3. Use `get_object_details_tool` to find the exact (x, y, z, yaw, size) of target objects.
-    4. Formulate a step-by-step plan for the task.
-    5. Unless the user's instruction says the robot is already positioned and to not navigate, call
-       `navigate_to_standoff_tool(object_id)` to approach the target object. It computes the standing
-       position and orientation itself - you do not choose coordinates.
-    6. Delegate execution to the `spatial_critic` sub-agent by object_id (e.g., "Pick up '<object_id>'."). The
-       critic computes the grasp height and approach itself - you do not need to specify grasp_z or angles.
+    4. There are FOUR navigation tools - use the right one, do not substitute:
+       - `navigate_to_standoff_tool(object_id)`: the ONLY tool that positions for a GRASP (tight standoff,
+         then creeps closer). Use immediately before delegating a pick.
+       - `navigate_to_object_tool(object_id)`: go near an object with no grasp intended (a clearance
+         standoff, safe for furniture/appliances). Use for 'go to <object>' or the approach step before
+         placing near/on an object.
+       - `navigate_to_room_tool(object_ids)`: go to the open center of a set of objects (a room/area). Use
+         for 'go to <room>' or the approach step before placing in a room.
+       - `navigate_and_face_tool(robot_x, robot_y, face_x, face_y)`: raw point navigation, for when you
+         already have exact coordinates and neither of the above fits.
+    5. ROUTING - identify which of these the request is, and follow only that path:
+       a. PURE NAVIGATION ("go to <room>" / "go to <object>", no pick or place mentioned): call the matching
+          navigate_to_room_tool / navigate_to_object_tool, then STOP. Arriving is the entire task - do not
+          attempt any grasp or place.
+       b. PICK ONLY ("pick up <object>"): call `navigate_to_standoff_tool(object_id)`, then delegate "Pick up
+          '<object_id>'." to `spatial_critic`.
+       c. PICK AND PLACE IN A ROOM ("pick <object> and place it in <room>"): navigate_to_standoff_tool then
+          delegate the pick, THEN call `navigate_to_room_tool` with the destination room's object_ids to
+          travel there (still holding the object), THEN delegate "Place it here." to `spatial_critic`.
+       d. PICK AND PLACE NEAR AN OBJECT ("...place it near/on <object>"): same as (c) but use
+          `navigate_to_object_tool(object_id)` for the destination leg instead of `navigate_to_room_tool`.
+       Unless the instruction says the robot is already positioned and not to navigate, always navigate
+       before delegating a pick or place - `spatial_critic` does not navigate itself.
+    6. Delegate execution to the `spatial_critic` sub-agent with a clear instruction ("Pick up '<object_id>'."
+       or "Place it here."). The critic computes grasp/place mechanics itself - you do not specify grasp_z,
+       angles, or coordinates.
     """,
-            tools=[self.list_objects_tool, self.get_object_details_tool, self.navigate_to_standoff_tool],
+            tools=[self.list_objects_tool, self.get_object_details_tool, self.navigate_and_face_tool,
+                   self.navigate_to_object_tool, self.navigate_to_room_tool, self.navigate_to_standoff_tool],
             sub_agents=[spatial_critic]
         )
         try:
@@ -316,6 +352,16 @@ class ReasoningNode(Node):
     # _creep_to_grasp_range corrects for that after Nav2 finishes.
     GRASP_STANDOFF_M = 0.34
 
+    # Clearance standoff for pure navigation (navigate_to_object_tool / navigate_to_room_tool) - these do NOT
+    # creep to grasp range afterwards, so they need a goal that's actually reachable for furniture-sized
+    # targets. The semantic map has no real bounding-box sizes for furniture/appliances (checked:
+    # Refrigerator_01_001, KitchenTable_01_001, CookingBench_01_001 all report size 0,0,0), so this is a flat
+    # clearance from the object's center rather than true bbox+margin - generous enough to clear typical
+    # furniture footprints and Nav2's costmap inflation. Deliberately much larger than GRASP_STANDOFF_M,
+    # which is tuned tight for the arm's ~0.30m reach ceiling and was driving Nav2 into endless replanning
+    # when aimed at a large appliance's center (RCA from 2026-07-06 kitchen pick-and-place runs).
+    NAV_APPROACH_STANDOFF_M = 1.0
+
     # Fine-approach target: creep forward after Nav2 stops until the object's arm-frame radius reaches
     # this value. 0.20m sits safely inside the convergence envelope (vs. 0.22m's near-zero margin at the
     # tuned standoff), so drift from navigation or a different approach angle doesn't push the grasp past
@@ -397,25 +443,12 @@ class ReasoningNode(Node):
         result = self._creep_to_grasp_range(object_id, target_r=target_r)
         return f"{result} (readjust attempt {self._readjust_attempts})"
 
-    def navigate_to_standoff_tool(self, object_id: str) -> str:
-        """Navigates the robot to a standoff position near the target object and faces it, so a grasp can
-        be attempted afterwards. The standoff distance and approach direction are computed in code from the
-        robot's current pose and the object's position - the LLM does not choose the coordinates. Call this
-        before delegating to the spatial_critic, unless the instructions say the robot is already positioned."""
-        self.get_logger().info(f'Tool called: navigate_to_standoff_tool({object_id})')
-        # Fresh positioning for a new pick task - reset the recovery re-approach counter so
-        # readjust_base_tool's step-down schedule starts from the standard target again.
-        self._readjust_attempts = 0
-        if object_id not in self.sem_map:
-            return f"Object {object_id} not found."
-        ox = self.sem_map[object_id]['position']['x']
-        oy = self.sem_map[object_id]['position']['y']
-
-        # This is the earliest TF consumer in the whole task sequence - it can run just seconds after the
-        # reasoning node starts, before AMCL/the TF tree has published enough history. A single lookup here
-        # intermittently raises "Lookup would require extrapolation into the past"; every other TF lookup in
-        # this file runs later (after positioning/feasibility steps) and never hits this race. Poll briefly
-        # instead of failing on the first miss.
+    def _get_robot_xy(self):
+        """Look up the robot's current (x, y) in the map frame. Returns (x, y, None) on success or
+        (None, None, error) on failure. This is often the earliest TF consumer in a task - it can run just
+        seconds after the reasoning node starts, before AMCL/the TF tree has published enough history, which
+        intermittently raises "Lookup would require extrapolation into the past" - so it polls briefly
+        instead of failing on the first miss."""
         t = None
         deadline = time.monotonic() + 5.0
         last_err = None
@@ -427,22 +460,81 @@ class ReasoningNode(Node):
                 last_err = e
                 time.sleep(0.2)
         if t is None:
-            return f"Failed to get robot pose: {last_err}"
-        rx, ry = t.transform.translation.x, t.transform.translation.y
+            return None, None, last_err
+        return t.transform.translation.x, t.transform.translation.y, None
 
-        dx, dy = rx - ox, ry - oy
+    def _navigate_toward_point(self, target_x: float, target_y: float, face_x: float, face_y: float,
+                                standoff_m: float) -> str:
+        """Drive to a point `standoff_m` from (target_x, target_y), offset back along the line toward the
+        robot's current position, and face (face_x, face_y). Shared by the grasp-standoff, object-approach,
+        and room-approach navigation tools - they differ only in which standoff distance they use."""
+        rx, ry, err = self._get_robot_xy()
+        if rx is None:
+            return f"Failed to get robot pose: {err}"
+        dx, dy = rx - target_x, ry - target_y
         dist = math.hypot(dx, dy)
         if dist < 1e-3:
             dx, dy, dist = 1.0, 0.0, 1.0
         ux, uy = dx / dist, dy / dist
+        stand_x = target_x + ux * standoff_m
+        stand_y = target_y + uy * standoff_m
+        return self.navigate_and_face_tool(stand_x, stand_y, face_x, face_y)
 
-        target_x = ox + ux * self.GRASP_STANDOFF_M
-        target_y = oy + uy * self.GRASP_STANDOFF_M
-        nav_result = self.navigate_and_face_tool(target_x, target_y, ox, oy)
+    def navigate_to_standoff_tool(self, object_id: str) -> str:
+        """Navigates the robot to a standoff position near the target object and faces it, so a grasp can
+        be attempted afterwards. The standoff distance and approach direction are computed in code from the
+        robot's current pose and the object's position - the LLM does not choose the coordinates. Call this
+        before delegating to the spatial_critic, unless the instructions say the robot is already positioned.
+        This is a GRASP approach (tight standoff, then creeps closer) - for pure navigation to an object with
+        no grasp intended, use navigate_to_object_tool instead."""
+        self.get_logger().info(f'Tool called: navigate_to_standoff_tool({object_id})')
+        # Fresh positioning for a new pick task - reset the recovery re-approach counter so
+        # readjust_base_tool's step-down schedule starts from the standard target again.
+        self._readjust_attempts = 0
+        if object_id not in self.sem_map:
+            return f"Object {object_id} not found."
+        ox = self.sem_map[object_id]['position']['x']
+        oy = self.sem_map[object_id]['position']['y']
+        nav_result = self._navigate_toward_point(ox, oy, ox, oy, self.GRASP_STANDOFF_M)
         if not nav_result.startswith("Successfully navigated"):
             return nav_result
         creep_result = self._creep_to_grasp_range(object_id)
         return f"{nav_result} {creep_result}"
+
+    def navigate_to_object_tool(self, object_id: str) -> str:
+        """Navigate to a clear standing position near the given object and face it, WITHOUT attempting a
+        grasp. Use this for a standalone 'go to <object>' request, or as the approach step before placing an
+        object near/on <object> (call this, then delegate 'place it here' to spatial_critic). Unlike
+        navigate_to_standoff_tool, this does not creep to grasp range - it stops at a generous clearance so it
+        works safely for furniture and appliances, not just small graspable items."""
+        self.get_logger().info(f'Tool called: navigate_to_object_tool({object_id})')
+        if object_id not in self.sem_map:
+            return f"Object {object_id} not found."
+        ox = self.sem_map[object_id]['position']['x']
+        oy = self.sem_map[object_id]['position']['y']
+        return self._navigate_toward_point(ox, oy, ox, oy, self.NAV_APPROACH_STANDOFF_M)
+
+    def navigate_to_room_tool(self, object_ids: list[str]) -> str:
+        """Navigate to an open standing position near the center of the given objects, and face that center.
+        Use this to reach a general area/room (e.g. 'the kitchen'): first find the objects that belong to
+        that room with list_objects_tool/get_object_details_tool, then pass their object_ids here. Does not
+        attempt any grasp or place - for a standalone 'go to the kitchen' request, call this and stop."""
+        self.get_logger().info(f'Tool called: navigate_to_room_tool({object_ids})')
+        coords = []
+        missing = []
+        for oid in object_ids:
+            if oid in self.sem_map:
+                p = self.sem_map[oid]['position']
+                coords.append((p['x'], p['y']))
+            else:
+                missing.append(oid)
+        if not coords:
+            return f"None of the given object IDs were found: {missing}"
+        cx = sum(c[0] for c in coords) / len(coords)
+        cy = sum(c[1] for c in coords) / len(coords)
+        nav_result = self._navigate_toward_point(cx, cy, cx, cy, self.NAV_APPROACH_STANDOFF_M)
+        note = f" (ignored unknown IDs: {missing})" if missing else ""
+        return f"{nav_result}{note}"
 
     def execute_moveit_pose(self, group_name, link_name, x, y, z, roll=0.0, pitch=0.0, yaw=0.0):
         if not self._moveit_client.wait_for_server(timeout_sec=2.0):
@@ -861,8 +953,10 @@ class ReasoningNode(Node):
         # blocked by the object (holding something); if it reached the limit it closed on empty air.
         grip_pos = self._gripper_position()
         grip_note = ""
+        self.holding = False
         if grip_pos is not None:
             if grip_pos > -0.0105:
+                self.holding = True
                 grip_note = f" Gripper settled at {grip_pos:.4f} (blocked by object -> likely holding it)."
             else:
                 grip_note = f" WARNING: gripper closed to {grip_pos:.4f} (empty air -> likely missed the object)."
@@ -877,14 +971,17 @@ class ReasoningNode(Node):
         # 6. Retreat to home with the object
         self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
         time.sleep(2.0)
-        return (f"Grasp sequence executed for {object_id}.{grip_note} "
-                f"Now call verify_grasp_tool({object_id}) to visually confirm the object is held and lifted.")
+        return f"Grasp sequence executed for {object_id}.{grip_note}"
 
     def verify_grasp_tool(self, object_id: str) -> str:
         """
-        Vision-only verification (no metric estimation): samples the onboard camera and asks the vision model
-        a yes/no question about whether the object is currently held in the gripper and lifted off its surface.
-        Use this after execute_grasp_tool. Only report task success if this returns held=true.
+        DISABLED (2026-07-06): not wired into spatial_critic's tool list. Vision-based verification proved
+        unreliable in practice - the onboard camera has too low a frame rate under software rendering, and
+        even with a frame captured at the lift pose (object in view) it produced both false negatives (a
+        genuinely lifted object reported as not held) and, per a live fridge pick-and-place run, a false
+        positive (reported held, but the object was later found dropped on the floor). execute_grasp_tool's
+        code-level grip_note (gripper joint position vs. a width-calibrated hold threshold) is used instead.
+        Left in place, unused, in case vision verification is revisited later - do not delete without reason.
         """
         self.get_logger().info(f'Tool called: verify_grasp_tool({object_id})')
         img = None
@@ -923,28 +1020,35 @@ class ReasoningNode(Node):
             return "Verification inconclusive: the vision model could not be reached. Do not claim success."
 
 
-    def place_tool(self, x: float, y: float, z: float) -> str:
-        """Executes a predefined trajectory to place an object at (x, y, z)."""
-        self.get_logger().info(f'Tool called: place_tool({x}, {y}, {z})')
-        
+    def place_tool(self) -> str:
+        """Releases the held object at the robot's CURRENT position via a fixed reach-forward/open-gripper/
+        retreat gesture. This does NOT navigate anywhere - you must already be standing where you want the
+        object released before calling this (use navigate_to_object_tool or navigate_to_room_tool first).
+        Refuses if execute_grasp_tool has not reported a held object."""
+        self.get_logger().info('Tool called: place_tool()')
+        if not self.holding:
+            return ("Refused: no object is currently believed to be held (execute_grasp_tool has not "
+                     "reported a successful grasp since the last place). Not releasing the gripper.")
+
         arm_joints = ['omx_joint1', 'omx_joint2', 'omx_joint3', 'omx_joint4']
         gripper_joints = ['omx_gripper_left_joint']
-        
+
         # 1. Reach forward
         ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, 0.5, 0.5, -1.0])
         if not ok: return msg
         time.sleep(2.0)
-        
+
         # 2. Open gripper
         self.execute_moveit_joints('gripper', gripper_joints, [0.010])
         time.sleep(1.0)
-        
+
         # 3. Retreat (Home)
         ok, msg = self.execute_moveit_joints('arm', arm_joints, [0.0, -1.0, 0.3, 0.7])
         if not ok: return msg
         time.sleep(2.0)
-            
-        return f"Successfully placed object at ({x}, {y}, {z})."
+
+        self.holding = False
+        return "Successfully placed the object at the robot's current position."
 
     def execute_callback(self, goal_handle):
         self.get_logger().info(f'Received reasoning goal: "{goal_handle.request.command}"')
