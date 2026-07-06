@@ -74,7 +74,7 @@ sleep 2
 
 # 6. Send action goal
 echo "Sending navigation command to reasoning node..."
-python3 scripts/test_nav_and_pick.py
+python3 scripts/test_nav_and_pick.py --command "${TEST_COMMAND:-Pick up the red cylinder}"
 
 echo "Command finished! Stopping recording..."
 sleep 2

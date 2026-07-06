@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import rclpy
 from rclpy.node import Node
 from rclpy.action import ActionClient
@@ -88,13 +89,15 @@ class NavPickTester(Node):
         rclpy.shutdown()
 
 def main(args=None):
-    rclpy.init(args=args)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--command', default='Pick up the red cylinder')
+    parsed_args, ros_args = parser.parse_known_args()
+
+    rclpy.init(args=ros_args)
     action_client = NavPickTester()
     # The robot spawns at (0,0), ~2.7m from the target, so this exercises full Nav2 path planning via
     # navigate_to_standoff_tool rather than the short in-place standoff adjustment.
-    action_client.send_goal(
-        "Pick up the red cylinder"
-    )
+    action_client.send_goal(parsed_args.command)
     rclpy.spin(action_client)
 
 if __name__ == '__main__':
