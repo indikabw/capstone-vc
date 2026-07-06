@@ -293,7 +293,7 @@ just an in-place adjustment.
 | 8 | "Pick up the red cylinder and place it near the refrigerator" | Pick-and-place (object) | ⚠️ Partial — legs run (nav → pick → nav-to-object); place step not verified (see note below) |
 
 Navigation (1–5) was the reliable foundation of the project. The pick (6) reached a physics-confirmed
-success but is not reliably repeatable (~2 of 3 attempts). For pick-and-place (7–8), each leg has run
+success but is not consistently repeatable as of yet. For pick-and-place (7–8), each leg has run
 in isolation, but **no full run has completed a verified place**: `place_tool` opens the gripper
 without confirming the object actually landed, and the repo's only physics check verifies a *lift*
 (cylinder z above a threshold), so a placement has never been physics-confirmed. See
