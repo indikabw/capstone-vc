@@ -321,7 +321,10 @@ class ReasoningNode(Node):
     # tuned standoff), so drift from navigation or a different approach angle doesn't push the grasp past
     # the ceiling.
     GRASP_APPROACH_RAW_R_TARGET_M = 0.20
-    GRASP_APPROACH_RAW_R_TOLERANCE_M = 0.02
+    # Tightened from 0.02: at the old tolerance the creep quit at r~0.22 (right back at the reach
+    # ceiling the 0.20 target was meant to give margin from), which was the RCA-confirmed root cause of
+    # both grasps knocking the cylinder off its stand instead of gripping it (see 2026-07-06 test run).
+    GRASP_APPROACH_RAW_R_TOLERANCE_M = 0.005
     GRASP_APPROACH_SPEED_MPS = 0.08
     # This deadline is wall-clock (time.monotonic()), but /cmd_vel commands only move the robot at the
     # simulation's real-time factor, which measured ~0.04 under this VM's llvmpipe software rendering (an
@@ -360,7 +363,7 @@ class ReasoningNode(Node):
             try:
                 _, r, _ = self._map_point_to_arm_frame(ox, oy, oz)
             except Exception as e:
-                self.get_logger().warn(f'_creep_to_grasp_range: TF lookup failed: {e}')
+                self.get_logger().warning(f'_creep_to_grasp_range: TF lookup failed: {e}')
                 break
             last_r = r
             if r <= target_r + self.GRASP_APPROACH_RAW_R_TOLERANCE_M:
@@ -700,14 +703,20 @@ class ReasoningNode(Node):
     # targeting center+0.08 left the fingertip 0.126m too high, so the net target must be ~0.13m lower.
     GRIPPER_FINGER_OFFSET = -0.05
 
-    # Radial correction: measured runs showed the gripper center landing ~0.02m beyond the object (overshoot
-    # in reach), so the jaws closed just past it. Pull the planar radius in by this much to center the jaws.
-    GRIPPER_RADIAL_OFFSET = -0.02
+    # Was -0.02 ("gripper lands ~2cm beyond the object, pull the radius in"), calibrated from a direct
+    # (no-nav) grasp that overshot. After Nav2 + creep, GRIP-OFFSET diagnostics from two independent runs
+    # (2026-07-06) showed the opposite: the gripper fell ~0.04-0.05m *short* of the object (undershoot),
+    # so subtracting here only made it worse - the arm never reached the cylinder and knocked it off its
+    # stand. Zeroed out rather than re-guessed a new constant; calculate_topdown_grasp now takes a live
+    # extra_r_offset measured at hover (see execute_grasp_tool) to correct the real residual instead.
+    GRIPPER_RADIAL_OFFSET = 0.0
 
-    def calculate_topdown_grasp(self, object_id: str):
+    def calculate_topdown_grasp(self, object_id: str, extra_r_offset: float = 0.0):
         """Top-down grasp poses: the gripper points straight down and descends vertically over the object's
         center (no radial push that would knock a thin object over). Returns (j1, hover, grip, lift) joint sets.
-        The grip level places the fingertips around the object's center height."""
+        The grip level places the fingertips around the object's center height.
+        extra_r_offset: additional radial correction (meters, positive = reach farther out) layered on top
+        of GRIPPER_RADIAL_OFFSET, used for the closed-loop correction measured live at hover."""
         if object_id not in self.sem_map:
             raise ValueError(f"Object {object_id} not found.")
         cx = self.sem_map[object_id]['position']['x']
@@ -735,13 +744,27 @@ class ReasoningNode(Node):
                 f"Reposition closer via navigate_to_standoff_tool before retrying."
             )
 
-        # alpha=1.57 -> gripper points straight down; radius pulled in by the measured overshoot to center jaws.
-        r_target = r + self.GRIPPER_RADIAL_OFFSET
-        self.get_logger().info(f'Top-down grasp r_target={r_target:.3f} (raw r={r:.3f}, radial_offset={self.GRIPPER_RADIAL_OFFSET})')
+        # alpha=1.57 -> gripper points straight down.
+        r_target = r + self.GRIPPER_RADIAL_OFFSET + extra_r_offset
+        self.get_logger().info(
+            f'Top-down grasp r_target={r_target:.3f} (raw r={r:.3f}, radial_offset={self.GRIPPER_RADIAL_OFFSET}, '
+            f'extra_r_offset={extra_r_offset:+.3f})')
         hover = self.solve_ik_planar(r_target, lz_hover, alpha=1.57)
         grip = self.solve_ik_planar(r_target, lz_grip, alpha=1.57)
         lift = self.solve_ik_planar(r_target, lz_lift, alpha=1.57)
         return j1, hover, grip, lift
+
+    def _measure_radial_shortfall(self, object_id: str, link_name: str = 'omx_gripper_left_link') -> float:
+        """Reads the live gap between a gripper link and the target object along the arm's radial axis, in
+        the arm base frame (so it's the same axis calculate_topdown_grasp's r_target operates on). Returns
+        the correction to ADD to r_target to close the gap (positive = gripper undershot, needs to reach
+        farther out; negative = gripper overshot)."""
+        op = self.sem_map[object_id]['position']
+        _, r_object, _ = self._map_point_to_arm_frame(op['x'], op['y'], op['z'])
+        gt = self.tf_buffer.lookup_transform('map', link_name, rclpy.time.Time())
+        gx, gy, gz = gt.transform.translation.x, gt.transform.translation.y, gt.transform.translation.z
+        _, r_gripper, _ = self._map_point_to_arm_frame(gx, gy, gz)
+        return r_object - r_gripper
 
     def _grasp_z_for(self, object_id: str) -> float:
         """The grasp height is the object's own center z from the semantic map. It is computed in code,
@@ -799,6 +822,17 @@ class ReasoningNode(Node):
             return f"Failed to reach hover: {msg}"
         time.sleep(1.0)
 
+        # Closed-loop correction: the planar IK model and the base's actual post-creep position both carry
+        # residual error (RCA from 2026-07-06 runs: ~0.04-0.05m radial undershoot), so re-measure the live
+        # gap at hover - where it's safe to read TF without risking a collision - and re-solve grip/lift
+        # with that correction folded in before descending, instead of trusting the open-loop target.
+        try:
+            correction = self._measure_radial_shortfall(object_id)
+            self.get_logger().info(f'Hover radial correction: {correction:+.3f}m')
+            j1, hover, grip, lift = self.calculate_topdown_grasp(object_id, extra_r_offset=correction)
+        except Exception as e:
+            self.get_logger().warning(f'Hover radial correction failed, using open-loop target: {e}')
+
         # 3. Descend vertically so the open jaws pass around the object body
         self.get_logger().info("Descending onto object")
         ok, msg = self.execute_moveit_joints('arm', arm_joints, [j1] + list(grip))
@@ -817,7 +851,7 @@ class ReasoningNode(Node):
                     f'GRIP-OFFSET {link}: gripper=({gx:.3f},{gy:.3f},{gz:.3f}) object=({op["x"]:.3f},{op["y"]:.3f},{op["z"]:.3f}) '
                     f'dx={op["x"]-gx:+.3f} dy={op["y"]-gy:+.3f} dz={op["z"]-gz:+.3f}')
         except Exception as e:
-            self.get_logger().warn(f'Grip-offset TF lookup failed: {e}')
+            self.get_logger().warning(f'Grip-offset TF lookup failed: {e}')
 
         # 4. Close the gripper around the object body (direct controller command; full close for a firm hold)
         self.get_logger().info("Closing gripper")
