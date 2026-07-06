@@ -1,4 +1,4 @@
-# Embodied Household Agent — ADK Reasoning Layer for ROS2
+# Embodied Household Agent — Semantic Language Navigation with ADK 2.0 & TurtleBot4
 
 A **Google ADK multi-agent reasoning layer** that drives a simulated household robot (a
 **TurtleBot4** mobile base + **OpenManipulator-X** arm) in **Gazebo**, turning natural-language
