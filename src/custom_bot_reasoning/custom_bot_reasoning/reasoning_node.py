@@ -147,14 +147,16 @@ class ReasoningNode(Node):
     WORKFLOW (follow in order, once each unless a step tells you to retry):
     1. Positioning: You are already positioned correctly. Do not navigate.
     2. VETO CHECK: call `check_grasp_feasibility_tool(object_id, pitch_angle=1.57)`. If it reports the object
-       is out of reach, report honest failure and stop.
+       is out of reach, call `readjust_base_tool(object_id)` to creep the base closer, then retry the
+       feasibility check (at most 3 total attempts). If it still fails after 3 attempts, report honest
+       failure and stop.
     3. Once feasibility passes, call `execute_grasp_tool(object_id, pitch_angle=1.57)` exactly once. This runs
        the entire atomic grasp (open, hover, descend, close, lift, retreat). No other arm tools are needed.
     4. Call `verify_grasp_tool(object_id)` to visually confirm the object is held and lifted. Report SUCCESS
        only if verification is POSITIVE. If it is NEGATIVE or inconclusive, report honest failure - never
        claim success the camera does not confirm.
     """,
-            tools=[self.get_nearby_objects_tool, self.check_grasp_feasibility_tool, self.execute_grasp_tool, self.verify_grasp_tool, self.place_tool]
+            tools=[self.get_nearby_objects_tool, self.check_grasp_feasibility_tool, self.readjust_base_tool, self.execute_grasp_tool, self.verify_grasp_tool, self.place_tool]
         )
 
         self.agent = Agent(
@@ -328,17 +330,26 @@ class ReasoningNode(Node):
     # this file (e.g. NAV_RESULT_TIMEOUT_SEC=600) is sized generously for the same reason.
     GRASP_APPROACH_MAX_DURATION_SEC = 90.0
 
-    def _creep_to_grasp_range(self, object_id: str) -> str:
+    # Recovery re-approach (see readjust_base_tool): each retry after a feasibility veto asks for a
+    # tighter raw-r target than the last, stepping down by this much. Floored at READJUST_MIN_TARGET_R_M
+    # so repeated retries can't creep the base into the object or its stand.
+    READJUST_STEP_M = 0.03
+    READJUST_MIN_TARGET_R_M = 0.12
+
+    def _creep_to_grasp_range(self, object_id: str, target_r: float = None) -> str:
         """Fine-approach correction run after Nav2's coarse navigation completes. Nav2's xy_goal_tolerance
         (0.10m) is coarser than the arm's usable reach margin (the top-down IK solver only converges up to
         a raw arm-frame radius of ~0.22m), so the base can stop just outside where a grasp is solvable.
         This drives straight forward in small steps, re-reading the live arm-frame radius from TF after
-        each step, until it reaches GRASP_APPROACH_RAW_R_TARGET_M or the safety time cap is hit."""
+        each step, until it reaches target_r (default GRASP_APPROACH_RAW_R_TARGET_M) or the safety time
+        cap is hit. Accepts a tighter target_r for recovery re-approaches (see readjust_base_tool)."""
         if object_id not in self.sem_map:
             return f"Object {object_id} not found."
         ox = self.sem_map[object_id]['position']['x']
         oy = self.sem_map[object_id]['position']['y']
         oz = self.sem_map[object_id]['position']['z']
+        if target_r is None:
+            target_r = self.GRASP_APPROACH_RAW_R_TARGET_M
 
         stop = TwistStamped()
         stop.header.frame_id = 'base_link'
@@ -352,7 +363,7 @@ class ReasoningNode(Node):
                 self.get_logger().warn(f'_creep_to_grasp_range: TF lookup failed: {e}')
                 break
             last_r = r
-            if r <= self.GRASP_APPROACH_RAW_R_TARGET_M + self.GRASP_APPROACH_RAW_R_TOLERANCE_M:
+            if r <= target_r + self.GRASP_APPROACH_RAW_R_TOLERANCE_M:
                 break
             cmd = TwistStamped()
             cmd.header.stamp = self.get_clock().now().to_msg()
@@ -363,8 +374,25 @@ class ReasoningNode(Node):
         stop.header.stamp = self.get_clock().now().to_msg()
         self.cmd_vel_pub.publish(stop)
         time.sleep(0.3)
-        self.get_logger().info(f'_creep_to_grasp_range: finished at raw r={last_r}')
+        self.get_logger().info(f'_creep_to_grasp_range: finished at raw r={last_r} (target_r={target_r:.3f})')
         return f"Fine approach complete (raw r={last_r})."
+
+    def readjust_base_tool(self, object_id: str) -> str:
+        """Recovery re-approach: call this when check_grasp_feasibility_tool reports the object out of
+        reach. Creeps the base progressively closer than the standard standoff (each call targets a
+        tighter arm-frame radius than the last) and re-samples the live reach - it does not re-run full
+        Nav2 navigation, so it stays fast and avoids the planner stalls that motivated removing direct
+        navigation from this agent. After calling this, re-call check_grasp_feasibility_tool. Bounded to
+        a safe minimum distance internally; stop retrying and report honest failure if it stops helping."""
+        self._readjust_attempts = getattr(self, '_readjust_attempts', 0) + 1
+        target_r = max(
+            self.READJUST_MIN_TARGET_R_M,
+            self.GRASP_APPROACH_RAW_R_TARGET_M - self.READJUST_STEP_M * self._readjust_attempts
+        )
+        self.get_logger().info(
+            f'Tool called: readjust_base_tool({object_id}), attempt {self._readjust_attempts}, target_r={target_r:.3f}')
+        result = self._creep_to_grasp_range(object_id, target_r=target_r)
+        return f"{result} (readjust attempt {self._readjust_attempts})"
 
     def navigate_to_standoff_tool(self, object_id: str) -> str:
         """Navigates the robot to a standoff position near the target object and faces it, so a grasp can
@@ -372,6 +400,9 @@ class ReasoningNode(Node):
         robot's current pose and the object's position - the LLM does not choose the coordinates. Call this
         before delegating to the spatial_critic, unless the instructions say the robot is already positioned."""
         self.get_logger().info(f'Tool called: navigate_to_standoff_tool({object_id})')
+        # Fresh positioning for a new pick task - reset the recovery re-approach counter so
+        # readjust_base_tool's step-down schedule starts from the standard target again.
+        self._readjust_attempts = 0
         if object_id not in self.sem_map:
             return f"Object {object_id} not found."
         ox = self.sem_map[object_id]['position']['x']
