@@ -276,23 +276,28 @@ You prompt in plain language — object IDs (e.g. `red_cylinder`, `Refrigerator_
 ## Tested Scenarios
 
 Exercised in the AWS RoboMaker Small House world (recorded runs are produced by the run scripts;
-`.mp4` artifacts are git-ignored). The grasp target is `red_cylinder` at `(-1.86, -2.0, 0.19)`, which
-sits ~2.7 m from the robot's spawn — so pick scenarios exercise full Nav2 path planning, not just an
-in-place adjustment.
+`.mp4` artifacts are git-ignored). The grasp target is `red_cylinder` — a small 3×3×5 cm box (the
+name is legacy; its flat faces give the gripper jaws full-face contact) — at `(-1.86, -2.0, 0.19)`,
+which sits ~2.7 m from the robot's spawn, so pick scenarios exercise full Nav2 path planning, not
+just an in-place adjustment.
 
 | # | Command | Capability | Status |
 |---|---------|-----------|--------|
-| 1 | "Go to the kitchen" | Room navigation | ✅ Verified success (physics-confirmed run) |
+| 1 | "Go to the kitchen" | Room navigation | ✅ Demonstrated (recorded run) |
 | 2 | "Go to the bedroom" | Room navigation | ✅ Demonstrated (recorded run) |
 | 3 | "Go to the TV" | Object navigation | ✅ Demonstrated (recorded run) |
 | 4 | "Go to the yoga ball" | Object navigation | ✅ Demonstrated (recorded run) |
 | 5 | "Go to the kitchen, then the bedroom" | Sequential navigation | ✅ Demonstrated (recorded run) |
 | 6 | "Pick up the red cylinder" | Nav + top-down grasp | ✅ Demonstrated (incl. a physics-confirmed success) — see [Known Limitations](#known-limitations) |
-| 7 | "Pick up the red cylinder and place it in the kitchen" | Pick-and-place (room) | ⚠️ Demonstrated end-to-end; not yet reliably repeatable |
-| 8 | "Pick up the red cylinder and place it near the refrigerator" | Pick-and-place (object) | ⚠️ Demonstrated end-to-end; not yet reliably repeatable |
+| 7 | "Pick up the red cylinder and place it in the kitchen" | Pick-and-place (room) | ⚠️ Partial — legs run (nav → pick → nav-to-room); place step not verified (see note below) |
+| 8 | "Pick up the red cylinder and place it near the refrigerator" | Pick-and-place (object) | ⚠️ Partial — legs run (nav → pick → nav-to-object); place step not verified (see note below) |
 
-Navigation was the reliable foundation of the project; the grasp-dependent scenarios (6–8) are the
-ones with the repeatability limits described below.
+Navigation (1–5) was the reliable foundation of the project. The pick (6) reached a physics-confirmed
+success but is not reliably repeatable (~2 of 3 attempts). For pick-and-place (7–8), each leg has run
+in isolation, but **no full run has completed a verified place**: `place_tool` opens the gripper
+without confirming the object actually landed, and the repo's only physics check verifies a *lift*
+(cylinder z above a threshold), so a placement has never been physics-confirmed. See
+[Known Limitations](#known-limitations).
 
 ---
 
