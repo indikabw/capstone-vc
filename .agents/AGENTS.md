@@ -61,3 +61,7 @@ To avoid blocking the developer's chat session or leaving dangling asynchronous 
 *   **Do Not Create Ad-Hoc Scripts in the Root Directory:** Never create quick utility or test scripts (e.g., `convert.py`, `test.py`, `fix.py`) directly in the workspace root.
 *   **Use Existing Directories:** Always place scripts inside the `scripts/` directory or appropriately within the `src/` packages.
 *   **Check Before Creating:** Before writing a new script to perform a task (like converting bags to videos, fixing worlds, or testing APIs), you MUST check the `scripts/` folder using `list_dir` or `grep_search` to see if a script already exists for that exact purpose. Do not reinvent the wheel and create duplicate files.
+
+## Git Commit Formatting
+
+*   **No AI Attribution:** When writing or generating Git commit messages, NEVER add `Co-Authored-By`, `Signed-off-by`, or any other trailers that attribute the commit to an AI assistant (like Claude, Gemini, etc.). Do not include yourself in the commits.
