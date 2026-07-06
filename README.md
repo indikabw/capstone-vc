@@ -1,4 +1,4 @@
-# Embodied Household Agent — Semantic Language Navigation with ADK 2.0 & TurtleBot4
+# Embodied Household Agent — Semantic Language Navigation with ADK & TurtleBot4
 
 A **Google ADK multi-agent reasoning layer** that drives a simulated household robot (a
 **TurtleBot4** mobile base + **OpenManipulator-X** arm) in **Gazebo**, turning natural-language
@@ -9,7 +9,7 @@ The LLM reasons about *intent* (which object, which action) and emits high-level
 deterministic control layer beneath it computes every navigation goal and every joint-space IK
 target in code. The agent never hallucinates raw coordinates.
 
-> **Stack:** ROS2 Lyrical Luth · Gazebo Jetty · Nav2 (AMCL) · MoveIt2 · Google ADK 2.0 (Gemini 2.5 Pro)
+> **Stack:** ROS2 Lyrical Luth · Gazebo Jetty · Nav2 (AMCL) · MoveIt2 · Google ADK (Gemini 2.5 Pro)
 
 ---
 
