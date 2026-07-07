@@ -86,6 +86,17 @@ flowchart TD
 - **Brain:** The ADK reasoning node (`custom_bot_reasoning/reasoning_node.py`), exposed as a single
   ROS2 Action Server.
 
+### Rooms are inferred, not stored
+`semantic_map.json` holds individual objects — `Refrigerator_01_001`, `CookingBench_01_001`,
+`KitchenTable_01_001`, `Bed_01_001`, `Wardrobe_01_001` … — but there is **no `kitchen` entry and no
+`bedroom` entry anywhere in it.** When you say *"go to the kitchen,"* the planner calls
+`list_objects_tool`, reads the raw object IDs, and **reasons zero-shot that the fridge, cooking bench,
+and kitchen cabinet *are* the kitchen**, then hands that inferred set to `navigate_to_room_tool`,
+which computes the geometric centre in code. This is precisely the value the reasoning layer adds over
+a hardcoded coordinate lookup: the *what-counts-as-a-kitchen* judgement lives in the LLM, and only the
+*where-is-its-centre* arithmetic lives in code — so dropping the robot into a new world needs no new
+room table, just the same commonsense grouping.
+
 ### From intent to motion
 `navigate_to_standoff_tool` computes a standoff pose *in code* from the robot's TF pose and the
 object's mapped position (the LLM never picks XY). Because Nav2's `xy_goal_tolerance` (0.10 m) is
@@ -110,7 +121,7 @@ pick-and-place) and routes it. Tools:
 | `get_object_details_tool` | Look up an object's pose (x, y, yaw) |
 | `navigate_to_standoff_tool` | Grasp approach — tight standoff, then creep closer |
 | `navigate_to_object_tool` | Clearance approach to an object (no grasp intended) |
-| `navigate_to_room_tool` | Go to the open centre of a set of objects (a room/area) |
+| `navigate_to_room_tool` | Go to the open centre of a set of objects the planner *inferred* to be a room (e.g. the kitchen) |
 | `navigate_and_face_tool` | Raw point-and-face navigation from explicit coordinates |
 
 **Spatial Critic** (`spatial_critic`) — delegated sub-agent for manipulation
@@ -262,10 +273,10 @@ your words to object IDs, then routes to exactly one path:
 
 | You say… | Agent path |
 |----------|-----------|
-| *"Go to the kitchen"* | `navigate_to_room_tool` (kitchen object IDs) → stop |
+| *"Go to the kitchen"* | planner **infers** which objects form the kitchen → `navigate_to_room_tool(those IDs)` → stop |
 | *"Go to the TV"* | `navigate_to_object_tool(TV_01_001)` → stop |
 | *"Pick up the red cylinder"* | `navigate_to_standoff_tool` → delegate *Pick up 'red_cylinder'* to the critic |
-| *"Pick up the red cylinder and place it in the kitchen"* | standoff → pick → `navigate_to_room_tool` (kitchen) → delegate *Place it here* |
+| *"Pick up the red cylinder and place it in the kitchen"* | standoff → pick → planner **infers** the kitchen's objects → `navigate_to_room_tool(those IDs)` → delegate *Place it here* |
 | *"…place it near the refrigerator"* | standoff → pick → `navigate_to_object_tool(Refrigerator_01_001)` → place |
 
 You prompt in plain language — object IDs (e.g. `red_cylinder`, `Refrigerator_01_001`, `TV_01_001`,
